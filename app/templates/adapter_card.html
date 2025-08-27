@@ -4,21 +4,8 @@
 <meta charset="utf-8">
 <title>Adapter Card — 60-Second JD</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
-
-<!-- Lightweight baseline CSS -->
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/water.css@2/out/water.css">
-
-<style>
-/* Health badge with no red/down state */
-.badge { display:inline-flex; align-items:center; gap:.4rem; padding:.2rem .5rem; border-radius:999px; font-size:.85rem; }
-.badge .dot { width:.6rem; height:.6rem; border-radius:50%; background:#bdbdbd; display:inline-block; } /* neutral grey */
-.badge.ok .dot { background:#20c997; } /* green */
-.code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
-.grid { display:grid; grid-template-columns: 1fr; gap:1rem; }
-.theme { border:1px solid #e5e7eb; border-radius:.5rem; padding:.75rem 1rem; }
-@media (min-width: 900px) { .grid { grid-template-columns: 1fr 1fr; } }
-.controls { display:flex; gap:.5rem; align-items:center; flex-wrap:wrap; }
-</style>
+<!-- Fully customized external sheet - Lincoln Collective inspired -->
+<link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
 <header style="display:flex;justify-content:space-between;align-items:center;gap:1rem;">
@@ -91,9 +78,12 @@ el('compileBtn').addEventListener('click', async () => {
   }
   const data = await r.json();
   const s = data.schema || {};
+  const companyRaw = (s.company ?? '').toString().trim();
+  const hideCompany = !companyRaw || /^(n\/?a|none|null|not specified|unspecified)$/i.test(companyRaw);
 
   el('role').textContent = s.role_title || '—';
-  el('company').textContent = s.company || '';
+  el('company').textContent = hideCompany ? '' : companyRaw;
+  el('company').style.display = hideCompany ? 'none' : 'block';
   const c = el('themes'); c.innerHTML = '';
   (s.themes || []).forEach(t => {
     const div = document.createElement('div');

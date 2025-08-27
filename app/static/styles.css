@@ -1,0 +1,270 @@
+/* ==========================================================================
+   Stimulus AI – Neon Flow Theme
+   File: /app/static/styles.css
+   Purpose: Sleek, high-energy UI with animated neon lines on black.
+   ========================================================================== */
+
+/* ---------- Design tokens ---------- */
+:root{
+  --bg:            #0a0c11;      /* deep black-blue */
+  --text:          #e9eef3;      /* high-contrast text */
+  --muted:         #a9b4bf;      /* secondary text */
+  --edge:          #121827;      /* panels/borders */
+
+  --pink:          #ff3e9e;      /* neon accents */
+  --blue:          #29d3ff;
+  --violet:        #8b5cf6;
+  --green:         #20c997;
+
+  --card-bg:       rgba(10,12,17,.70);
+  --card-border:   rgba(255,255,255,.10);
+  --glass:         rgba(255,255,255,.04);
+
+  --ring:          rgba(41,211,255,.22);
+  --ring-strong:   rgba(41,211,255,.50);
+
+  --radius:        14px;
+  --shadow-soft:   0 10px 30px rgba(0,0,0,.45);
+  --shadow-neon:   0 0 24px rgba(41,211,255,.18), 0 0 36px rgba(255,62,158,.10);
+}
+
+/* ---------- Base ---------- */
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body{
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 16px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue",
+        Arial, "Noto Sans", "Liberation Sans", "Apple Color Emoji",
+        "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---------- Animated neon flow background (pure CSS) ---------- */
+/* Two layered pseudo-elements create moving neon “line fields” */
+body::before,
+body::after{
+  content:"";
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  pointer-events: none;
+}
+
+body::before{
+  /* colored wave field */
+  background:
+    radial-gradient(1200px 700px at 10% 0%, rgba(255,62,158,.10), transparent 60%),
+    radial-gradient(1000px 600px at 90% 100%, rgba(41,211,255,.10), transparent 60%),
+    /* line set A */
+    repeating-linear-gradient(
+      -25deg,
+      rgba(255,62,158,.40) 0 2px,
+      rgba(255,62,158,0)   2px 18px
+    ),
+    /* line set B */
+    repeating-linear-gradient(
+      25deg,
+      rgba(41,211,255,.35) 0 2px,
+      rgba(41,211,255,0)   2px 18px
+    );
+  mix-blend-mode: screen;
+  filter: blur(.25px);
+  opacity: .65;
+  animation: flowDrift 38s linear infinite;
+  background-size:
+    140% 140%,
+    140% 140%,
+    900px 900px,
+    900px 900px;
+  background-position:
+    0% 0%,
+    100% 100%,
+    0% 0%,
+    100% 100%;
+}
+
+body::after{
+  /* subtle rotating glow sheet */
+  background:
+    radial-gradient(800px 800px at 50% 50%, rgba(139,92,246,.12), transparent 60%);
+  mix-blend-mode: screen;
+  opacity: .6;
+  animation: flowRotate 60s linear infinite;
+}
+
+/* motion keyframes */
+@keyframes flowDrift{
+  0%   { background-position: 0% 0%, 100% 100%, 0% 0%, 100% 100%; }
+  50%  { background-position: 100% 0%, 0% 100%, 50% 50%, 50% 50%; }
+  100% { background-position: 0% 0%, 100% 100%, 100% 0%, 0% 100%; }
+}
+
+@keyframes flowRotate{
+  from { transform: rotate(0deg) scale(1.05); }
+  to   { transform: rotate(360deg) scale(1.05); }
+}
+
+/* Respect reduced motion */
+@media (prefers-reduced-motion: reduce){
+  body::before, body::after { animation: none; }
+}
+
+/* ---------- Layout helpers ---------- */
+main, .container{
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+/* ---------- Header / Title ---------- */
+header h1{
+  font-size: clamp(28px, 3.6vw, 46px);
+  letter-spacing: .2px;
+  margin: 0 0 .25rem 0;
+  text-shadow: 0 2px 20px rgba(0,0,0,.6), 0 0 18px rgba(41,211,255,.18);
+}
+header small{
+  color: var(--muted);
+}
+
+/* ---------- Health badge (neutral → green only) ---------- */
+.badge{
+  display:inline-flex; align-items:center; gap:.45rem;
+  padding:.28rem .6rem;
+  background: var(--glass);
+  border: 1px solid var(--card-border);
+  border-radius: 999px;
+  color: var(--text);
+  box-shadow: var(--shadow-soft);
+}
+.badge .dot{
+  width:.6rem; height:.6rem; border-radius:50%;
+  background: #bdbdbd; /* neutral */
+}
+.badge.ok{
+  border-color: var(--ring-strong);
+  box-shadow: 0 0 0 2px var(--ring), 0 0 16px var(--ring);
+}
+.badge.ok .dot{ background: var(--green); }
+
+/* ---------- Controls & inputs ---------- */
+.controls{ display:flex; gap:.6rem; align-items:center; flex-wrap:wrap; }
+
+button, .btn{
+  --bg1: var(--blue);
+  --bg2: var(--pink);
+  appearance: none;
+  padding: .6rem 1rem;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  color: #061019;
+  background: linear-gradient(135deg, var(--bg1), var(--bg2));
+  box-shadow: var(--shadow-neon);
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform .08s ease, box-shadow .2s ease, filter .2s ease;
+}
+button:hover{ filter: brightness(1.06) saturate(1.06); box-shadow: 0 0 0 3px var(--ring), var(--shadow-neon); }
+button:active{ transform: translateY(1px) scale(.99); }
+
+#clearBtn{
+  --bg1: rgba(255,255,255,.08);
+  --bg2: rgba(255,255,255,.05);
+  color: var(--text);
+  border: 1px solid var(--card-border);
+  box-shadow: var(--shadow-soft);
+}
+
+textarea, input[type="text"]{
+  width:100%;
+  color: var(--text);
+  background: #0e141b;
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+  padding: .8rem .9rem;
+  outline: none;
+  box-shadow: inset 0 0 0 1px transparent, 0 0 0 0 transparent;
+  transition: box-shadow .2s ease, border-color .2s ease;
+  caret-color: var(--blue);
+}
+textarea::placeholder{ color: #7f8a96; }
+textarea:focus{
+  border-color: var(--ring-strong);
+  box-shadow: 0 0 0 3px var(--ring);
+}
+
+/* ---------- Adapter Card layout ---------- */
+.grid{ display:grid; grid-template-columns: 1fr; gap: 1.1rem; }
+@media (min-width: 900px){ .grid{ grid-template-columns: 1fr 1fr; } }
+
+.theme{
+  position: relative;
+  background: var(--card-bg);
+  border-radius: var(--radius);
+  padding: .95rem 1.15rem;
+  box-shadow: var(--shadow-soft);
+  overflow: clip;
+  /* subtle inner gloss */
+  background-image:
+    radial-gradient(120% 140% at 0% 0%, rgba(41,211,255,.07), transparent 42%),
+    radial-gradient(120% 120% at 100% 100%, rgba(255,62,158,.06), transparent 48%);
+}
+
+/* Gradient “neon” border without heavy DOM */
+.theme::before{
+  content:"";
+  position:absolute; inset:0; border-radius:inherit; padding:1px;
+  background: linear-gradient(135deg, rgba(41,211,255,.75), rgba(255,62,158,.75));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor; mask-composite: exclude;
+  opacity: .85; pointer-events:none;
+}
+
+/* gentle float to add kinesthetic feel */
+.theme{ animation: floaty 9s ease-in-out infinite; }
+@keyframes floaty{
+  0%,100% { transform: translateY(0px); }
+  50%     { transform: translateY(-4px); }
+}
+
+.theme h3{
+  margin: .1rem 0 .35rem 0;
+  font-size: 1.05rem;
+  letter-spacing: .2px;
+  text-shadow: 0 1px 14px rgba(41,211,255,.15);
+}
+.theme strong{ display:block; margin:.35rem 0 .15rem; color: var(--text); }
+.theme ul{ margin:.2rem 0 .6rem 1.15rem; color: var(--muted); }
+.theme li{ margin:.18rem 0; }
+
+/* ---------- Result headline ---------- */
+#result h2{
+  font-size: clamp(22px, 2.6vw, 30px);
+  margin: .25rem 0 .1rem 0;
+  text-shadow: 0 2px 18px rgba(0,0,0,.5), 0 0 18px rgba(41,211,255,.14);
+}
+#company{ color: var(--muted); }
+#company:empty { display: none; }
+
+/* ---------- Links ---------- */
+a{ color: var(--blue); text-decoration: none; }
+a:hover{ color: var(--pink); text-decoration: underline; }
+
+/* ---------- Utilities ---------- */
+hr{
+  border: 0; height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,.14), transparent);
+  margin: 18px 0 14px;
+}
+
+small, .subtle { color: var(--muted); }
+
+/* ---------- Focus visibility ---------- */
+:focus-visible{
+  outline: 2px solid var(--ring-strong);
+  outline-offset: 2px;
+  border-radius: 10px;
+}
