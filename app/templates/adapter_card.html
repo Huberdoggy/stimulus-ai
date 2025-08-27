@@ -1,40 +1,124 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <title>Adapter Card — 60-Second JD</title>
-    <meta name="viewport" content="width=device-width,initial-scale=1">
-    <style>
-      body { font-family: system-ui, -apple-system, Segoe UI, Roboto,
-        Arial, sans-serif; margin: 2rem; line-height: 1.4; }
-      header { margin-bottom: 1rem; }
-      h1 { font-size: 1.25rem; margin: 0; }
-      .meta { color: #666; margin-top: .25rem; }
-      .theme { border: 1px solid #e3e3e3; border-radius: .5rem;
-              padding: .75rem 1rem; margin-top: .75rem; }
-      .theme h3 { margin: 0 0 .25rem 0; font-size: 1rem; }
-      ul { margin: .25rem 0 .5rem 1.25rem; }
-      small { color: #666; }
-    </style>
-  </head>
-  <body>
-    <header>
-      <h1>{{ schema.role_title }}</h1>
-      {% if schema.company %}<div class="meta">{{ schema.company }}</div>{% endif %}
-      <small>Stimulus AI — Adapter Card (POC)</small>
-    </header>
-    {% for t in schema.themes %}
-    <section class="theme">
-      <h3>{{ t.name }}</h3>
+<head>
+<meta charset="utf-8">
+<title>Adapter Card — 60-Second JD</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+
+<!-- Lightweight baseline CSS -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/water.css@2/out/water.css">
+
+<style>
+/* Health badge with no red/down state */
+.badge { display:inline-flex; align-items:center; gap:.4rem; padding:.2rem .5rem; border-radius:999px; font-size:.85rem; }
+.badge .dot { width:.6rem; height:.6rem; border-radius:50%; background:#bdbdbd; display:inline-block; } /* neutral grey */
+.badge.ok .dot { background:#20c997; } /* green */
+.code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+.grid { display:grid; grid-template-columns: 1fr; gap:1rem; }
+.theme { border:1px solid #e5e7eb; border-radius:.5rem; padding:.75rem 1rem; }
+@media (min-width: 900px) { .grid { grid-template-columns: 1fr 1fr; } }
+.controls { display:flex; gap:.5rem; align-items:center; flex-wrap:wrap; }
+</style>
+</head>
+<body>
+<header style="display:flex;justify-content:space-between;align-items:center;gap:1rem;">
+  <div>
+    <h1 style="margin-bottom:.25rem;">Stimulus AI — Adapter Card (POC)</h1>
+    <small>Compile any JD into a 60-second, theme-first checklist.</small>
+  </div>
+  <div id="health" class="badge"><span class="dot"></span><span>checking…</span></div>
+</header>
+
+<section>
+  <label for="jd" class="code">Paste JD (multi-paragraph is fine)</label>
+  <textarea id="jd" rows="10" placeholder="Paste a JD here…"></textarea>
+
+  <div class="controls">
+    <label style="display:flex;align-items:center;gap:.5rem;">
+      <input id="live" type="checkbox"> <span>Live mode (uses tokens)</span>
+    </label>
+    <button id="compileBtn">Compile 60-Second JD</button>
+    <button id="clearBtn" type="button">Clear</button>
+  </div>
+</section>
+
+<hr>
+
+<section id="result" style="display:none;">
+  <h2 id="role"></h2>
+  <div id="company" style="color:#666;"></div>
+  <div id="themes" class="grid"></div>
+</section>
+
+<script>
+const el = (id) => document.getElementById(id);
+
+// Health pill (no red state: neutral grey while checking; green when healthy)
+async function pingHealth(){
+  const badge = el('health');
+  try {
+    const r = await fetch('/health');
+    if (r.ok) {
+      badge.className = 'badge ok';
+      badge.querySelector('span:nth-child(2)').textContent = 'healthy';
+    } else {
+      badge.className = 'badge';
+      badge.querySelector('span:nth-child(2)').textContent = 'checking…';
+    }
+  } catch {
+    // On error, stay neutral and say checking… (no red)
+    badge.className = 'badge';
+    badge.querySelector('span:nth-child(2)').textContent = 'checking…';
+  }
+}
+pingHealth();
+setInterval(pingHealth, 8000);
+
+// Compile button → POST /jd/60s (DRY by default; Live adds ?dry=0)
+el('compileBtn').addEventListener('click', async () => {
+  const text = el('jd').value.trim();
+  if (!text) { alert('Paste a JD first.'); return; }
+  const live = el('live').checked;
+  const qs = live ? '?dry=0' : '';
+  const r = await fetch('/jd/60s' + qs, {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ text })
+  });
+  if (!r.ok) {
+    alert('Compile failed. Check console/network.');
+    return;
+  }
+  const data = await r.json();
+  const s = data.schema || {};
+
+  el('role').textContent = s.role_title || '—';
+  el('company').textContent = s.company || '';
+  const c = el('themes'); c.innerHTML = '';
+  (s.themes || []).forEach(t => {
+    const div = document.createElement('div');
+    div.className = 'theme';
+    div.innerHTML = `
+      <h3>${t.name || 'Theme'}</h3>
       <strong>Requirements</strong>
-      <ul>
-        {% for r in t.requirements %}<li>{{ r }}</li>{% endfor %}
-      </ul>
+      <ul>${(t.requirements||[]).map(x=>`<li>${x}</li>`).join('')}</ul>
       <strong>Success Indicators</strong>
-      <ul>
-        {% for s in t.success_indicators %}<li>{{ s }}</li>{% endfor %}
-      </ul>
-    </section>
-    {% endfor %}
-  </body>
+      <ul>${(t.success_indicators||[]).map(x=>`<li>${x}</li>`).join('')}</ul>
+    `;
+    c.appendChild(div);
+  });
+  el('result').style.display = 'block';
+});
+
+// Clear button → wipe textarea, hide results, reset fields
+el('clearBtn').addEventListener('click', () => {
+  el('jd').value = '';
+  el('live').checked = false;
+  el('result').style.display = 'none';
+  el('themes').innerHTML = '';
+  el('role').textContent = '';
+  el('company').textContent = '';
+});
+</script>
+</body>
 </html>

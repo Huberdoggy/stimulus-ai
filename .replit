@@ -9,7 +9,8 @@ onBoot = "pip install -r requirements.txt || python -m pip install -r requiremen
 
 # Workspace run (Preview). Respect Replit-provided PORT
 
-run = "python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT"
+# Respect $PORT if Replit sets it; otherwise default to 8000 for preview
+run = "python -m uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"
 
 ######################################################################################################
 
