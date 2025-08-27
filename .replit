@@ -1,0 +1,46 @@
+# Entry & language hints
+
+entrypoint = "app/main.py"
+modules = ["python-3.11"]
+
+# First run, Bash overrides
+#onBoot = "./scripts/bootstrap.sh || echo 'File not found' "
+onBoot = "pip install -r requirements.txt || python -m pip install -r requirements.txt"
+
+# Workspace run (Preview). Respect Replit-provided PORT
+
+run = "python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT"
+
+######################################################################################################
+
+# Install deps and any boot-time tasks
+
+[nix]
+channel = "stable-25_05"
+packages = ["libxcrypt"]
+
+######################################################################################################
+
+# Replit Deployments config (cloud uses $PORT)
+
+[deployment]
+run = ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "$PORT"]
+deploymentTarget = "cloudrun"
+
+######################################################################################################
+
+# Optional explicit port mapping for deploys (expose base URL without suffix)
+
+[[ports]]
+localPort = 8000
+externalPort = 80
+
+######################################################################################################
+
+# Misc
+
+[unitTest]
+language = "python"
+
+[gitHubImport]
+requiredFiles = [".replit", "replit.nix"]

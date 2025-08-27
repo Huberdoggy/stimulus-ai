@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Adapter Card — 60-Second JD</title>
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <style>
+      body { font-family: system-ui, -apple-system, Segoe UI, Roboto,
+        Arial, sans-serif; margin: 2rem; line-height: 1.4; }
+      header { margin-bottom: 1rem; }
+      h1 { font-size: 1.25rem; margin: 0; }
+      .meta { color: #666; margin-top: .25rem; }
+      .theme { border: 1px solid #e3e3e3; border-radius: .5rem;
+              padding: .75rem 1rem; margin-top: .75rem; }
+      .theme h3 { margin: 0 0 .25rem 0; font-size: 1rem; }
+      ul { margin: .25rem 0 .5rem 1.25rem; }
+      small { color: #666; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>{{ schema.role_title }}</h1>
+      {% if schema.company %}<div class="meta">{{ schema.company }}</div>{% endif %}
+      <small>Stimulus AI — Adapter Card (POC)</small>
+    </header>
+    {% for t in schema.themes %}
+    <section class="theme">
+      <h3>{{ t.name }}</h3>
+      <strong>Requirements</strong>
+      <ul>
+        {% for r in t.requirements %}<li>{{ r }}</li>{% endfor %}
+      </ul>
+      <strong>Success Indicators</strong>
+      <ul>
+        {% for s in t.success_indicators %}<li>{{ s }}</li>{% endfor %}
+      </ul>
+    </section>
+    {% endfor %}
+  </body>
+</html>
