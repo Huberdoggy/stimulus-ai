@@ -1,114 +1,141 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<title>Adapter Card — 60-Second JD</title>
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<!-- Fully customized external sheet - Lincoln Collective inspired -->
-<link rel="stylesheet" href="/static/styles.css">
+  <meta charset="utf-8">
+  <title>Stimulus AI — Adapter Card</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <!-- Theme CSS -->
+  <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
-<header style="display:flex;justify-content:space-between;align-items:center;gap:1rem;">
-  <div>
-    <h1 style="margin-bottom:.25rem;">Stimulus AI — Adapter Card (POC)</h1>
-    <small>Compile any JD into a 60-second, theme-first checklist.</small>
-  </div>
-  <div id="health" class="badge"><span class="dot"></span><span>checking…</span></div>
-</header>
+  <header class="hero">
+    <div class="container hero__content">
+      <h1 class="logo" aria-label="Stimulus dot AI">
+        Stimulus<span class="logo__dot" aria-hidden="true">.</span>AI
+      </h1>
+      <p class="tagline">From Job Description to evidence-anchored signals — without the fluff.</p>
 
-<section>
-  <label for="jd" class="code">Paste JD (multi-paragraph is fine)</label>
-  <textarea id="jd" rows="10" placeholder="Paste a JD here…"></textarea>
+      <div class="hero__hud">
+        <div id="health" class="badge" aria-live="polite">
+          <span class="dot" aria-hidden="true"></span><span>checking…</span>
+        </div>
 
-  <div class="controls">
-    <label style="display:flex;align-items:center;gap:.5rem;">
-      <input id="live" type="checkbox"> <span>Live mode (uses tokens)</span>
-    </label>
-    <button id="compileBtn">Compile 60-Second JD</button>
-    <button id="clearBtn" type="button">Clear</button>
-  </div>
-</section>
+        <label class="toggle">
+          <input id="live" type="checkbox" />
+          <span class="toggle__track" aria-hidden="true"></span>
+          <span class="toggle__label">Live mode</span>
+        </label>
+      </div>
+    </div>
+  </header>
 
-<hr>
+  <main class="container main">
+    <section class="form-card" aria-labelledby="jdlabel">
+      <label id="jdlabel" for="jd" class="sr-only">Paste Job Description</label>
+      <textarea id="jd" rows="12" placeholder="Paste a JD here…"></textarea>
 
-<section id="result" style="display:none;">
-  <h2 id="role"></h2>
-  <div id="company" style="color:#666;"></div>
-  <div id="themes" class="grid"></div>
-</section>
+      <div class="controls" role="group" aria-label="Actions">
+        <button id="compileBtn" class="btn-circle btn-compile" aria-label="Compile" title="Compile">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true">
+            <path d="M8 5v14l11-7z"/>
+          </svg>
+        </button>
 
-<script>
-const el = (id) => document.getElementById(id);
+        <button id="clearBtn" class="btn-circle btn-clear" aria-label="Clear" title="Clear">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true">
+            <path d="M18.3 5.71L12 12.01 5.7 5.71 4.29 7.12 10.6 13.4 4.29 19.7 5.7 21.11 12 14.82 18.3 21.11 19.71 19.7 13.42 13.4 19.71 7.12z"/>
+          </svg>
+        </button>
+      </div>
+    </section>
 
-// Health pill (no red state: neutral grey while checking; green when healthy)
-async function pingHealth(){
-  const badge = el('health');
-  try {
-    const r = await fetch('/health');
-    if (r.ok) {
-      badge.className = 'badge ok';
-      badge.querySelector('span:nth-child(2)').textContent = 'healthy';
-    } else {
-      badge.className = 'badge';
-      badge.querySelector('span:nth-child(2)').textContent = 'checking…';
+    <section id="result" class="result" style="display:none;">
+      <h2 id="role" class="result__role"></h2>
+      <div id="company" class="result__company"></div>
+      <div id="themes" class="grid"></div>
+    </section>
+  </main>
+
+  <script>
+    const el = (id) => document.getElementById(id);
+
+    // Entrance sequence
+    document.addEventListener('DOMContentLoaded', () => {
+      document.body.classList.add('ready');
+    });
+
+    // Health pill (neutral → green + pulse)
+    async function pingHealth(){
+      const badge = el('health');
+      try {
+        const r = await fetch('/health');
+        if (r.ok) {
+          badge.className = 'badge ok';
+          badge.querySelector('span:nth-child(2)').textContent = 'healthy';
+        } else {
+          badge.className = 'badge';
+          badge.querySelector('span:nth-child(2)').textContent = 'checking…';
+        }
+      } catch {
+        badge.className = 'badge';
+        badge.querySelector('span:nth-child(2)').textContent = 'checking…';
+      }
     }
-  } catch {
-    // On error, stay neutral and say checking… (no red)
-    badge.className = 'badge';
-    badge.querySelector('span:nth-child(2)').textContent = 'checking…';
-  }
-}
-pingHealth();
-setInterval(pingHealth, 8000);
+    pingHealth(); setInterval(pingHealth, 8000);
 
-// Compile button → POST /jd/60s (DRY by default; Live adds ?dry=0)
-el('compileBtn').addEventListener('click', async () => {
-  const text = el('jd').value.trim();
-  if (!text) { alert('Paste a JD first.'); return; }
-  const live = el('live').checked;
-  const qs = live ? '?dry=0' : '';
-  const r = await fetch('/jd/60s' + qs, {
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({ text })
-  });
-  if (!r.ok) {
-    alert('Compile failed. Check console/network.');
-    return;
-  }
-  const data = await r.json();
-  const s = data.schema || {};
-  const companyRaw = (s.company ?? '').toString().trim();
-  const hideCompany = !companyRaw || /^(n\/?a|none|null|not specified|unspecified)$/i.test(companyRaw);
+    // Compile → POST /jd/60s (DRY by default; Live adds ?dry=0)
+    el('compileBtn').addEventListener('click', async () => {
+      const text = el('jd').value.trim();
+      if (!text) { alert('Paste a JD first.'); return; }
+      const live = el('live').checked;
+      const qs = live ? '?dry=0' : '';
+      const r = await fetch('/jd/60s' + qs, {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ text })
+      });
+      if (!r.ok) { alert('Compile failed.'); return; }
+      const data = await r.json();
+      const s = data.schema || {};
 
-  el('role').textContent = s.role_title || '—';
-  el('company').textContent = hideCompany ? '' : companyRaw;
-  el('company').style.display = hideCompany ? 'none' : 'block';
-  const c = el('themes'); c.innerHTML = '';
-  (s.themes || []).forEach(t => {
-    const div = document.createElement('div');
-    div.className = 'theme';
-    div.innerHTML = `
-      <h3>${t.name || 'Theme'}</h3>
-      <strong>Requirements</strong>
-      <ul>${(t.requirements||[]).map(x=>`<li>${x}</li>`).join('')}</ul>
-      <strong>Success Indicators</strong>
-      <ul>${(t.success_indicators||[]).map(x=>`<li>${x}</li>`).join('')}</ul>
-    `;
-    c.appendChild(div);
-  });
-  el('result').style.display = 'block';
-});
+      const companyRaw = (s.company ?? '').toString().trim();
+      const hideCompany = !companyRaw || /^(n\/?a|none|null|not specified|unspecified)$/i.test(companyRaw);
 
-// Clear button → wipe textarea, hide results, reset fields
-el('clearBtn').addEventListener('click', () => {
-  el('jd').value = '';
-  el('live').checked = false;
-  el('result').style.display = 'none';
-  el('themes').innerHTML = '';
-  el('role').textContent = '';
-  el('company').textContent = '';
-});
-</script>
+      el('role').textContent = s.role_title || '—';
+      el('company').textContent = hideCompany ? '' : companyRaw;
+      el('company').style.display = hideCompany ? 'none' : 'block';
+
+      const c = el('themes'); c.innerHTML = '';
+      (s.themes || []).forEach(t => {
+        const div = document.createElement('div');
+        div.className = 'theme';
+        div.innerHTML = `
+          <h3>${t.name || 'Theme'}</h3>
+          <strong>Requirements</strong>
+          <ul>${(t.requirements||[]).map(x=>`<li>${x}</li>`).join('')}</ul>
+          <strong>Success Indicators</strong>
+          <ul>${(t.success_indicators||[]).map(x=>`<li>${x}</li>`).join('')}</ul>
+        `;
+        c.appendChild(div);
+      });
+      document.querySelector('#result').style.display = 'block';
+      document.querySelector('#result').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+
+    // Clear
+    el('clearBtn').addEventListener('click', () => {
+      el('jd').value = '';
+      el('live').checked = false;
+      document.querySelector('#result').style.display = 'none';
+      el('themes').innerHTML = '';
+      el('role').textContent = '';
+      el('company').textContent = '';
+    });
+  </script>
 </body>
 </html>
