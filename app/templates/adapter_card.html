@@ -13,65 +13,80 @@
   <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
-  <header class="hero">
-    <div class="container hero__content">
-      <h1 class="logo" aria-label="Stimulus dot AI">
-        Stimulus<span class="logo__dot" aria-hidden="true">.</span>AI
-      </h1>
-      <p class="tagline">From Job Description to evidence-anchored signals — without the fluff.</p>
 
-      <div class="hero__hud">
-        <div id="health" class="badge" aria-live="polite">
-          <span class="dot" aria-hidden="true"></span><span>checking…</span>
+  <!-- Simple intro layer: centered PNG on black, soft pulse, 5s -->
+  <div id="intro" class="intro">
+    <img src="/static/mcburney.png" alt="McBurney Group mark" id="introImg" class="intro__img">
+  </div>
+
+  <!-- App content (revealed after intro) -->
+  <div id="app" class="app">
+    <header class="hero">
+      <div class="container hero__content">
+        <h1 class="logo" aria-label="Stimulus dot AI">
+          Stimulus<span class="logo__dot" aria-hidden="true">.</span>AI
+        </h1>
+        <p class="tagline">From Job Description to evidence-anchored signals — without the fluff.</p>
+
+        <div class="hero__hud">
+          <div id="health" class="badge" aria-live="polite">
+            <span class="dot" aria-hidden="true"></span><span>checking…</span>
+          </div>
+
+          <label class="toggle">
+            <input id="live" type="checkbox" />
+            <span class="toggle__track" aria-hidden="true"></span>
+            <span class="toggle__label">Live mode</span>
+          </label>
         </div>
-
-        <label class="toggle">
-          <input id="live" type="checkbox" />
-          <span class="toggle__track" aria-hidden="true"></span>
-          <span class="toggle__label">Live mode</span>
-        </label>
       </div>
-    </div>
-  </header>
+    </header>
 
-  <main class="container main">
-    <section class="form-card" aria-labelledby="jdlabel">
-      <label id="jdlabel" for="jd" class="sr-only">Paste Job Description</label>
-      <textarea id="jd" rows="12" placeholder="Paste a JD here…"></textarea>
+    <main class="container main">
+      <section class="form-card" aria-labelledby="jdlabel">
+        <label id="jdlabel" for="jd" class="sr-only">Paste Job Description</label>
+        <textarea id="jd" rows="12" placeholder="Paste a JD here…"></textarea>
 
-      <div class="controls" role="group" aria-label="Actions">
-        <button id="compileBtn" class="btn-circle btn-compile" aria-label="Compile" title="Compile">
-          <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true">
-            <path d="M8 5v14l11-7z"/>
-          </svg>
-        </button>
+        <div class="controls" role="group" aria-label="Actions">
+          <button id="compileBtn" class="btn-circle btn-compile" aria-label="Compile" title="Compile">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true">
+              <path d="M8 5v14l11-7z"/>
+            </svg>
+          </button>
 
-        <button id="clearBtn" class="btn-circle btn-clear" aria-label="Clear" title="Clear">
-          <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true">
-            <path d="M18.3 5.71L12 12.01 5.7 5.71 4.29 7.12 10.6 13.4 4.29 19.7 5.7 21.11 12 14.82 18.3 21.11 19.71 19.7 13.42 13.4 19.71 7.12z"/>
-          </svg>
-        </button>
-      </div>
-    </section>
+          <button id="clearBtn" class="btn-circle btn-clear" aria-label="Clear" title="Clear">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true">
+              <path d="M18.3 5.71L12 12.01 5.7 5.71 4.29 7.12 10.6 13.4 4.29 19.7 5.7 21.11 12 14.82 18.3 21.11 19.71 19.7 13.42 13.4 19.71 7.12z"/>
+            </svg>
+          </button>
+        </div>
+      </section>
 
-    <section id="result" class="result" style="display:none;">
-      <h2 id="role" class="result__role"></h2>
-      <div id="company" class="result__company"></div>
-      <div id="themes" class="grid"></div>
-    </section>
-  </main>
+      <section id="result" class="result" style="display:none;">
+        <h2 id="role" class="result__role"></h2>
+        <div id="company" class="result__company"></div>
+        <div id="themes" class="grid"></div>
+      </section>
+    </main>
+  </div>
 
   <script>
-    const el = (id) => document.getElementById(id);
+    // --- Intro timing: force-show PNG for 5s on black, then reveal app ---
+    window.addEventListener('DOMContentLoaded', () => {
+      const intro = document.getElementById('intro');
+      const app   = document.getElementById('app');
 
-    // Entrance sequence
-    document.addEventListener('DOMContentLoaded', () => {
-      document.body.classList.add('ready');
+      // Start the 5s timer immediately; no image preloading dependency.
+      const INTRO_MS = 5000;
+      setTimeout(() => {
+        intro.style.display = 'none';          // remove intro layer
+        app.classList.add('ready');            // fade/slide in app
+      }, INTRO_MS);
     });
 
-    // Health pill (neutral → green + pulse)
+    // --- Health ping (neutral → green + pulse) ---
     async function pingHealth(){
-      const badge = el('health');
+      const badge = document.getElementById('health');
       try {
         const r = await fetch('/health');
         if (r.ok) {
@@ -88,7 +103,9 @@
     }
     pingHealth(); setInterval(pingHealth, 8000);
 
-    // Compile → POST /jd/60s (DRY by default; Live adds ?dry=0)
+    // --- Compile / Clear ---
+    const el = (id) => document.getElementById(id);
+
     el('compileBtn').addEventListener('click', async () => {
       const text = el('jd').value.trim();
       if (!text) { alert('Paste a JD first.'); return; }
@@ -127,7 +144,6 @@
       document.querySelector('#result').scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
 
-    // Clear
     el('clearBtn').addEventListener('click', () => {
       el('jd').value = '';
       el('live').checked = false;

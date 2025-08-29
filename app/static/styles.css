@@ -1,7 +1,6 @@
 /* ==========================================================================
    Stimulus AI — Cinematic Aurora Theme (2025)
-   Fonts: DM Serif Display (headings) + Inter (body)
-   Includes: health pulse + resilient multi-bounce logo dot
+   Minimal intro: centered PNG on black (soft green pulse) → reveal app
    ========================================================================== */
 
 :root{
@@ -13,7 +12,7 @@
   --aurora-1:      #7c6cf6;
   --aurora-2:      #29d3ff;
   --aurora-3:      #ff3e9e;
-  --aurora-4:      #34d399;
+  --aurora-4:      #34d399;  /* soft green */
 
   --ring:          rgba(41,211,255,.20);
   --ring-strong:   rgba(41,211,255,.55);
@@ -35,15 +34,46 @@ body{
   line-height: 1.55;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
-  opacity: 0;                 /* fade-in on ready */
+}
+
+/* =================== INTRO (simple, reliable) =================== */
+.intro{
+  position: fixed;
+  inset: 0;
+  background: #000;                 /* solid black backdrop */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+.intro__img{
+  width: clamp(160px, 28vw, 360px);
+  height: auto;
+  display: block;
+  /* Soft green pulse (no masking or fancy filters) */
+  animation: introPulse 1800ms ease-in-out infinite;
+  filter: drop-shadow(0 0 14px rgba(52,211,153,.32))
+          drop-shadow(0 0 26px rgba(52,211,153,.18));
+}
+@keyframes introPulse{
+  0%,100% { transform: scale(1);    }
+  50%     { transform: scale(1.035); }
+}
+
+/* =================== APP WRAPPER =================== */
+.app{
+  opacity: 0;
   transform: translateY(6px);
   transition: opacity 900ms ease, transform 900ms ease;
 }
-body.ready{ opacity: 1; transform: none; }
+.app.ready{
+  opacity: 1;
+  transform: none;
+}
 
 .container{ max-width: 1180px; margin: 0 auto; padding: 24px; }
 
-/* ----------------- HERO (aurora only here) ----------------- */
+/* =================== HERO (aurora inks only when app is ready) =================== */
 .hero{
   position: relative; overflow: clip; isolation: isolate;
   padding: 56px 0 48px;
@@ -54,25 +84,24 @@ body.ready{ opacity: 1; transform: none; }
   content:""; position: absolute; inset: -20% -10% -40% -10%;
   z-index: -1; pointer-events: none; opacity: 0;
   filter: blur(22px) saturate(120%); transform: scale(1.04);
-  transition: opacity 1400ms ease 300ms;
+  transition: opacity 1000ms ease 200ms;
 }
-.hero::before{
+.app.ready .hero::before{
   background:
     radial-gradient(60% 140% at 10% 10%,  rgba(124,108,246,.28), transparent 60%),
     radial-gradient(70% 130% at 90% 20%,  rgba(41,211,255,.25), transparent 62%),
     radial-gradient(60% 120% at 40% 80%,  rgba(255,62,158,.25), transparent 63%),
     conic-gradient(from 30deg at 50% 25%, rgba(41,211,255,.22), rgba(124,108,246,.18), rgba(255,62,158,.22), rgba(41,211,255,.22));
   animation: auroraShift 36s linear infinite;
+  opacity: 1;
 }
-.hero::after{
+.app.ready .hero::after{
   background:
     radial-gradient(50% 120% at 60% 0%, rgba(52,211,153,.20), transparent 60%),
     radial-gradient(40% 100% at 30% 70%, rgba(41,211,255,.16), transparent 60%);
   animation: auroraBreathe 18s ease-in-out infinite;
+  opacity: 1;
 }
-body.ready .hero::before,
-body.ready .hero::after{ opacity: 1; }
-
 @keyframes auroraShift{
   0%   { transform: translateY(0) scale(1.04) rotate(0deg); }
   50%  { transform: translateY(-2%) scale(1.06) rotate(180deg); }
@@ -88,19 +117,13 @@ body.ready .hero::after{ opacity: 1; }
 }
 @media (max-width: 840px){ .hero__content{ grid-template-columns: 1fr; gap: 14px; } }
 
-/* ---------- Logo + resilient dot ---------- */
+/* ---------- Logo + resilient dot (starts only when app.ready) ---------- */
 .logo{
   font-family: "DM Serif Display", serif;
   font-size: clamp(36px, 6vw, 60px);
-  margin: 0; letter-spacing: .4px; line-height: 1.2; /* room for bounce */
+  margin: 0; letter-spacing: .4px; line-height: 1.2;
   text-shadow: 0 6px 32px rgba(0,0,0,.55), 0 0 26px rgba(41,211,255,.10);
-  opacity: 0; transform: translateY(6px);
-  transition: opacity 700ms ease, transform 700ms ease;
-  overflow: visible; /* prevent bounce clipping */
 }
-body.ready .logo{ opacity: 1; transform: none; }
-
-/* Multi-bounce logo dot (4 hops), GPU-friendly and never fades out */
 .logo__dot{
   display: inline-block;
   vertical-align: baseline;
@@ -108,16 +131,16 @@ body.ready .logo{ opacity: 1; transform: none; }
   will-change: transform, opacity;
   backface-visibility: hidden;
   transform: translate3d(0,0,0);
-  /* gradient text with solid fallback */
-  color: #bde9ff; /* fallback if background-clip isn't supported */
+  color: #bde9ff; /* fallback if gradient clip isn't supported */
   background-image: linear-gradient(135deg, var(--aurora-1), var(--aurora-2));
   background-clip: text; -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent; /* ensure gradient paints the glyph */
+  -webkit-text-fill-color: transparent;
   text-shadow: none;
   opacity: 0;
+}
+.app.ready .logo__dot{
   animation: dotBounceLong 2400ms cubic-bezier(.2,.8,.2,1) 320ms both;
 }
-
 @keyframes dotBounceLong{
   0%   { opacity: 0; transform: translate3d(0,-22px,0) scale(.7); }
   12%  { opacity: 1; transform: translate3d(0,0,0)      scale(1.00); }
@@ -132,10 +155,10 @@ body.ready .logo{ opacity: 1; transform: none; }
 
 .tagline{ grid-column: 1 / -1; margin: 6px 0 0; color: var(--muted); }
 
-/* HUD (health + live toggle) */
+/* ---------- HUD (health + live toggle) ---------- */
 .hero__hud{ display:flex; align-items:center; gap:12px; justify-self:end; }
 
-/* ---------- Health badge: neutral → green with soft pulse ---------- */
+/* Health badge: neutral → green with soft pulse */
 .badge{
   display:inline-flex; align-items:center; gap:.45rem;
   padding:.28rem .6rem;
@@ -156,7 +179,7 @@ body.ready .logo{ opacity: 1; transform: none; }
   animation: okPulse 2600ms ease-in-out infinite;
 }
 .badge.ok .dot{
-  background: #34d399;
+  background: var(--aurora-4);
   animation: dotPulse 2600ms ease-in-out infinite;
 }
 @keyframes okPulse{
@@ -194,7 +217,7 @@ body.ready .logo{ opacity: 1; transform: none; }
 }
 .toggle__label{ color: var(--muted); font-size: .92rem; }
 
-/* ----------------- MAIN + CARD ----------------- */
+/* ---------- MAIN + CARD ---------- */
 .main{ padding-top: 10px; }
 
 .form-card{
@@ -257,7 +280,7 @@ textarea:focus{ border-color: var(--ring-strong); box-shadow: 0 0 0 3px var(--ri
   color: #100005;
 }
 
-/* ----------------- RESULTS ----------------- */
+/* ---------- RESULTS ---------- */
 .result{ margin-top: 26px; }
 .result__role{
   font-family: "DM Serif Display", serif;
@@ -297,7 +320,7 @@ textarea:focus{ border-color: var(--ring-strong); box-shadow: 0 0 0 3px var(--ri
 .theme ul{ margin:.1rem 0 .6rem 1.1rem; color: var(--muted); }
 .theme li{ margin:.18rem 0; }
 
-/* --------------- Utilities / a11y --------------- */
+/* ---------- a11y / links ---------- */
 hr{ border: 0; height: 1px; background: linear-gradient(90deg, transparent, rgba(255,255,255,.14), transparent); margin: 18px 0 14px; }
 a{ color: var(--aurora-2); text-decoration: none; }
 a:hover{ color: var(--aurora-3); text-decoration: underline; }
@@ -308,8 +331,9 @@ a:hover{ color: var(--aurora-3); text-decoration: underline; }
   clip:rect(0,0,0,0)!important; white-space:nowrap!important; border:0!important;
 }
 
-/* Reduce motion */
+/* Reduce motion = disable pulses/aurora/dot bounce */
 @media (prefers-reduced-motion: reduce){
-  .hero::before, .hero::after, .theme { animation: none !important; }
-  body{ transition: none; }
+  .intro__img{ animation: none !important; }
+  .app.ready .hero::before, .app.ready .hero::after, .theme{ animation: none !important; }
+  .app.ready .logo__dot{ animation: none !important; }
 }
