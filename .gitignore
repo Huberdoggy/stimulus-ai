@@ -4,6 +4,9 @@
 .cache
 .pythonlibs
 
+# Ignore candidate supplied artifacts
+**/uploads/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
