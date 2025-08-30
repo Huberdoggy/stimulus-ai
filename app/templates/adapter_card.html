@@ -11,31 +11,47 @@
 
   <!-- Theme CSS -->
   <link rel="stylesheet" href="/static/styles.css">
+
+  <!-- Inline tweaks: picker + coverage (no custom bullet layout; use native bullets) -->
+  <style>
+    .coverage{ margin-top:12px; display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+    .coverage__overall{ font-weight:700; padding:.28rem .6rem; border-radius:999px; background:rgba(52,211,153,.14); border:1px solid rgba(52,211,153,.35); box-shadow:0 0 0 2px rgba(52,211,153,.12); }
+    .pill{ padding:.2rem .5rem; border-radius:999px; border:1px solid rgba(255,255,255,.12); background: rgba(255,255,255,.04); font-size:.9rem; }
+
+    /* receipts align under list text assuming global .theme ul margin-left */
+    details.receipt{ margin:.18rem 0 .35rem 1.1rem; }
+    .muted{ color:#a8b2bd; }
+
+    .row{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+    .select{ height:38px; padding:0 10px; border-radius:999px; border:1px solid rgba(255,255,255,.12); background:#0d141d; color:#e8edf2; outline:none; }
+    .select:focus{ box-shadow:0 0 0 3px rgba(41,211,255,.22); }
+    .note{ font-size:.92rem; color:#a8b2bd; }
+
+    /* tiny inline check glyph before matched requirements; does not change layout */
+    .hit{ font-weight:700; margin-right:.25rem; }
+  </style>
 </head>
 <body>
 
-  <!-- Simple intro layer: centered PNG on black, soft pulse, 5s -->
+  <!-- Intro -->
   <div id="intro" class="intro">
     <img src="/static/mcburney.png" alt="McBurney Group mark" id="introImg" class="intro__img">
   </div>
 
-  <!-- App content (revealed after intro) -->
   <div id="app" class="app">
     <header class="hero">
       <div class="container hero__content">
-        <h1 class="logo" aria-label="Stimulus dot AI">
-          Stimulus<span class="logo__dot" aria-hidden="true">.</span>AI
-        </h1>
+        <h1 class="logo" aria-label="Stimulus dot AI">Stimulus<span class="logo__dot">.</span>AI</h1>
         <p class="tagline">From Job Description to evidence-anchored signals — without the fluff.</p>
 
         <div class="hero__hud">
           <div id="health" class="badge" aria-live="polite">
-            <span class="dot" aria-hidden="true"></span><span>checking…</span>
+            <span class="dot"></span><span>checking…</span>
           </div>
 
           <label class="toggle">
             <input id="live" type="checkbox" />
-            <span class="toggle__track" aria-hidden="true"></span>
+            <span class="toggle__track"></span>
             <span class="toggle__label">Live mode</span>
           </label>
         </div>
@@ -47,83 +63,82 @@
         <label id="jdlabel" for="jd" class="sr-only">Paste Job Description</label>
         <textarea id="jd" rows="12" placeholder="Paste a JD here…"></textarea>
 
-        <!-- Unified Controls Bar (Play/Stop + candidate + resume/audio) -->
         <div class="controls" role="group" aria-label="Actions">
           <!-- Compile -->
           <button id="compileBtn" class="btn-circle btn-compile" aria-label="Compile" title="Compile">
-            <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true">
-              <path d="M8 5v14l11-7z"/>
-            </svg>
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
           </button>
 
           <!-- Clear -->
           <button id="clearBtn" class="btn-circle btn-clear" aria-label="Clear" title="Clear">
-            <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true">
-              <path d="M18.3 5.71L12 12.01 5.7 5.71 4.29 7.12 10.6 13.4 4.29 19.7 5.7 21.11 12 14.82 18.3 21.11 19.71 19.7 13.42 13.4 19.71 7.12z"/>
-            </svg>
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M18.3 5.71L12 12.01 5.7 5.71 4.29 7.12 10.6 13.4 4.29 19.7 5.7 21.11 12 14.82 18.3 21.11 19.71 19.7 13.42 13.4 19.71 7.12z"/></svg>
           </button>
 
           <!-- Divider -->
           <div aria-hidden="true" style="width:1px;height:32px;margin:0 6px;background:linear-gradient(to bottom,rgba(255,255,255,.06),rgba(255,255,255,.14),rgba(255,255,255,.06));border-radius:1px;"></div>
 
-          <!-- Candidate chip -->
-          <input id="cand" type="text" placeholder="candidate"
-                 aria-label="Candidate ID"
-                 style="height:38px;min-width:120px;max-width:180px;padding:0 10px;border-radius:999px;border:1px solid rgba(255,255,255,.12);background:#0d141d;color:#e8edf2;outline:none;"
-                 onfocus="this.style.boxShadow='0 0 0 3px rgba(41,211,255,.22)';"
-                 onblur="this.style.boxShadow='none';" />
+          <!-- Candidate row -->
+          <div class="row" style="gap:6px;">
+            <input id="cand" type="text" placeholder="candidate" aria-label="Candidate ID"
+                   style="height:38px;min-width:120px;max-width:180px;padding:0 10px;border-radius:999px;border:1px solid rgba(255,255,255,.12);background:#0d141d;color:#e8edf2;outline:none;"
+                   onfocus="this.style.boxShadow='0 0 0 3px rgba(41,211,255,.22)';" onblur="this.style.boxShadow='none';" />
+            <select id="candSelect" class="select" title="Pick a candidate"><option value="">— pick candidate —</option></select>
+            <button id="loadBtn" class="btn-circle btn-ghost" aria-label="Load artifacts" title="Load artifacts for selected candidate">
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M5 20h14v-2H5v2zm7-18L5.33 9h3.84v4h5.66V9h3.84L12 2z"></path></svg>
+            </button>
+          </div>
 
           <!-- Hidden file inputs -->
           <input id="resumeFile" type="file" accept=".pdf,.docx,.txt,.md" style="position:absolute;left:-9999px;opacity:0;" />
           <input id="audioFile"  type="file" accept="audio/*"                style="position:absolute;left:-9999px;opacity:0;" />
 
-          <!-- Resume button -->
+          <!-- Upload buttons -->
           <button id="resumeBtn" class="btn-circle btn-ghost" aria-label="Attach resume" title="Attach resume">
-            <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true">
-              <path d="M16 2H8a2 2 0 0 0-2 2v16l6-3 6 3V4a2 2 0 0 0-2-2z"></path>
-            </svg>
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M16 2H8a2 2 0 0 0-2 2v16l6-3 6 3V4a2 2 0 0 0-2-2z"></path></svg>
           </button>
-
-          <!-- Audio button -->
           <button id="audioBtn" class="btn-circle btn-ghost" aria-label="Attach audio" title="Attach audio">
-            <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true">
-              <path d="M12 14a3 3 0 0 0 3-3V6a3 3 0 1 0-6 0v5a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 14 0h-2zM11 19h2v3h-2z"></path>
-            </svg>
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M12 14a3 3 0 0 0 3-3V6a3 3 0 1 0-6 0v5a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 14 0h-2zM11 19h2v3h-2z"></path></svg>
           </button>
 
-          <!-- Status line -->
-          <span id="artifactsMsg" style="margin-left:6px;font-size:.92rem;color:#a8b2bd;" aria-live="polite"></span>
+          <!-- Build Evidence -->
+          <button id="evidenceBtn" class="btn-circle btn-compile" aria-label="Build evidence map" title="Build evidence">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79L19 21.49 21.49 19l-5.99-5zM4 9.5C4 6.46 6.46 4 9.5 4S15 6.46 15 9.5 12.54 15 9.5 15 4 12.54 4 9.5z"/></svg>
+          </button>
+
+          <span id="artifactsMsg" class="note" aria-live="polite"></span>
         </div>
       </section>
 
       <section id="result" class="result" style="display:none;">
         <h2 id="role" class="result__role"></h2>
         <div id="company" class="result__company"></div>
+
+        <!-- Coverage -->
+        <div id="coverage" class="coverage" style="display:none;">
+          <span id="covOverall" class="coverage__overall"></span>
+          <div id="covThemes" style="display:flex;gap:8px;flex-wrap:wrap;"></div>
+        </div>
+
         <div id="themes" class="grid"></div>
       </section>
     </main>
   </div>
 
   <script>
-    // --- Intro timing: force-show PNG for 5s on black, then reveal app ---
+    // Intro timing
     window.addEventListener('DOMContentLoaded', () => {
       const intro = document.getElementById('intro');
       const app   = document.getElementById('app');
       setTimeout(() => { intro.style.display = 'none'; app.classList.add('ready'); }, 5000);
     });
 
-    // --- Health ping (neutral → green + pulse) ---
+    // Health ping
     async function pingHealth(){
       const badge = document.getElementById('health');
       try {
         const r = await fetch('/health');
-        if (r.ok) {
-          badge.className = 'badge ok';
-          badge.querySelector('span:nth-child(2)').textContent = 'healthy';
-        } else {
-          badge.className = 'badge';
-          badge.querySelector('span:nth-child(2)').textContent = 'checking…';
-        }
+        badge.className = r.ok ? 'badge ok' : 'badge';
+        badge.querySelector('span:nth-child(2)').textContent = r.ok ? 'healthy' : 'checking…';
       } catch {
         badge.className = 'badge';
         badge.querySelector('span:nth-child(2)').textContent = 'checking…';
@@ -131,23 +146,81 @@
     }
     pingHealth(); setInterval(pingHealth, 8000);
 
-    // Shortcuts
     const $ = (id) => document.getElementById(id);
+    const STATE = { schema: null, claims: [], transcript_path: "" };
 
-    // --- Compile / Clear (unchanged) ---
+    const esc = (s) => (s ?? '').toString().replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+    const setMsg = (t) => { $('artifactsMsg').textContent = t; };
+    const setMsgHTML = (h) => { $('artifactsMsg').innerHTML = h; };
+    const postForm = async (url, fd) => { const r = await fetch(url, { method:'POST', body: fd }); if (!r.ok) throw new Error(await r.text()); return r.json(); };
+
+    // Candidate discovery
+    async function refreshCandidates(){
+      try {
+        const r = await fetch('/artifacts/candidates');
+        if (!r.ok) return;
+        const data = await r.json();
+        const sel = $('candSelect');
+        const curr = sel.value;
+        sel.innerHTML = '<option value="">— pick candidate —</option>';
+        (data.candidates || []).forEach(id => { const opt = document.createElement('option'); opt.value = id; opt.textContent = id; sel.appendChild(opt); });
+        if (curr && (data.candidates || []).includes(curr)) sel.value = curr;
+      } catch {}
+    }
+    refreshCandidates(); setInterval(refreshCandidates, 15000);
+
+    // Sync chip & picker
+    $('cand').addEventListener('input', () => {
+      const v = ($('cand').value || '').trim();
+      const sel = $('candSelect');
+      const match = [...sel.options].find(o => o.value === v);
+      sel.value = match ? v : '';
+    });
+    $('candSelect').addEventListener('change', () => {
+      const v = $('candSelect').value;
+      if (v) $('cand').value = v;
+    });
+
+    // Load artifacts
+    $('loadBtn').addEventListener('click', async () => {
+      const cand = ($('candSelect').value || $('cand').value || '').trim();
+      if (!cand) { alert('Pick or type a candidate first.'); return; }
+      setMsg('Loading saved artifacts…');
+      try {
+        const r = await fetch(`/artifacts/for/${encodeURIComponent(cand)}`);
+        if (!r.ok) throw new Error(await r.text());
+        const data = await r.json();
+
+        const latest = data.latest || {};
+        STATE.claims = Array.isArray(latest.claims) ? latest.claims : [];  // stays empty unless you choose to inline claims later
+        STATE.transcript_path = latest.transcript_path || "";
+
+        const bits = [];
+        bits.push(`Loaded candidate: ${cand}`);
+        if (latest.resume_path) bits.push(`resume ✓`);
+        if (latest.claims_count) bits.push(`claims: ${latest.claims_count}`);
+        if (latest.transcript_chars) bits.push(`transcript: ${latest.transcript_chars} chars`);
+        const prev = esc(latest.transcript_preview || '');
+        setMsgHTML(bits.join(' · ') + (prev
+          ? ` <details style="display:inline-block;margin-left:8px;">
+               <summary style="cursor:pointer;color:#e8edf2;display:inline;">Transcript preview</summary>
+               <pre style="white-space:pre-wrap;margin:.35rem 0 0;color:#a8b2bd;">${prev}</pre>
+             </details>`
+          : ''));
+      } catch { setMsg('Load failed'); }
+    });
+
+    // Compile JD → show schema (native UL/LI)
     $('compileBtn').addEventListener('click', async () => {
       const text = $('jd').value.trim();
       if (!text) { alert('Paste a JD first.'); return; }
       const live = $('live').checked;
       const qs = live ? '?dry=0' : '';
-      const r = await fetch('/jd/60s' + qs, {
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ text })
-      });
+      const r = await fetch('/jd/60s' + qs, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ text }) });
       if (!r.ok) { alert('Compile failed.'); return; }
       const data = await r.json();
       const s = data.schema || {};
+      STATE.schema = s;
 
       const companyRaw = (s.company ?? '').toString().trim();
       const hideCompany = !companyRaw || /^(n\/?a|none|null|not specified|unspecified)$/i.test(companyRaw);
@@ -156,24 +229,29 @@
       $('company').textContent = hideCompany ? '' : companyRaw;
       $('company').style.display = hideCompany ? 'none' : 'block';
 
-      const c = $('themes'); c.innerHTML = '';
+      const grid = $('themes'); grid.innerHTML = '';
       (s.themes || []).forEach(t => {
         const div = document.createElement('div');
         div.className = 'theme';
         div.innerHTML = `
           <h3>${t.name || 'Theme'}</h3>
           <strong>Requirements</strong>
-          <ul>${(t.requirements||[]).map(x=>`<li>${x}</li>`).join('')}</ul>
+          <ul>${(t.requirements||[]).map(x=>`<li>${esc(x)}</li>`).join('')}</ul>
           <strong>Success Indicators</strong>
-          <ul>${(t.success_indicators||[]).map(x=>`<li>${x}</li>`).join('')}</ul>
+          <ul>${(t.success_indicators||[]).map(x=>`<li>${esc(x)}</li>`).join('')}</ul>
         `;
-        c.appendChild(div);
+        grid.appendChild(div);
       });
+
+      $('coverage').style.display = 'none';
+      $('covOverall').textContent = '';
+      $('covThemes').innerHTML = '';
 
       document.querySelector('#result').style.display = 'block';
       document.querySelector('#result').scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
 
+    // Clear
     $('clearBtn').addEventListener('click', () => {
       $('jd').value = '';
       $('live').checked = false;
@@ -182,76 +260,112 @@
       $('role').textContent = '';
       $('company').textContent = '';
       $('artifactsMsg').textContent = '';
+      $('coverage').style.display = 'none';
+      STATE.schema = null; STATE.claims = []; STATE.transcript_path = "";
     });
 
-    // --- Helpers for the status line (safe HTML preview) ---
-    const esc = (s) => (s ?? '').toString().replace(/[&<>"']/g, m => (
-      { '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]
-    ));
-    const setMsg = (t) => { $('artifactsMsg').textContent = t; };
-    const setMsgHTML = (h) => { $('artifactsMsg').innerHTML = h; };
-    const postForm = async (url, fd) => {
-      const r = await fetch(url, { method:'POST', body: fd });
-      if (!r.ok) throw new Error(await r.text());
-      return r.json();
-    };
-
-    // --- Unified Controls: resume/audio with Live toggle threading ---
+    // Uploads
     $('resumeBtn').addEventListener('click', () => $('resumeFile').click());
     $('audioBtn').addEventListener('click',  () => $('audioFile').click());
 
     $('resumeFile').addEventListener('change', async () => {
       const f = $('resumeFile').files[0]; if (!f) return;
-      const cand = ($('cand').value || '').trim() || 'anon';
+      const cand = ($('candSelect').value || $('cand').value || '').trim() || 'anon';
       const live = $('live').checked;
-      const qs = live ? '?dry=0' : '';  // Live toggle now controls artifacts too
+      const qs = live ? '?dry=0' : '';
 
-      const fd = new FormData();
-      fd.append('candidate_id', cand);
-      fd.append('file', f);
+      const fd = new FormData(); fd.append('candidate_id', cand); fd.append('file', f);
 
       setMsg('Uploading resume…');
       try {
         const res = await postForm('/artifacts/resume' + qs, fd);
+        STATE.claims = Array.isArray(res.claims) ? res.claims : [];
         setMsg(`Resume ✓  claims: ${res.claims_count ?? '?'}  → ${res.path ?? ''}`);
-      } catch (e) {
-        setMsg('Resume upload failed');
-      } finally {
-        $('resumeFile').value = '';
-      }
+        await refreshCandidates(); $('cand').value = cand; $('candSelect').value = cand;
+      } catch { setMsg('Resume upload failed'); }
+      finally { $('resumeFile').value = ''; }
     });
 
     $('audioFile').addEventListener('change', async () => {
       const f = $('audioFile').files[0]; if (!f) return;
-      const cand = ($('cand').value || '').trim() || 'anon';
+      const cand = ($('candSelect').value || $('cand').value || '').trim() || 'anon';
       const live = $('live').checked;
-      const qs = live ? '?dry=0' : '';  // Live toggle threaded through
+      const qs = live ? '?dry=0' : '';
 
-      const fd = new FormData();
-      fd.append('candidate_id', cand);
-      fd.append('file', f);
+      const fd = new FormData(); fd.append('candidate_id', cand); fd.append('file', f);
 
       setMsg('Transcribing…');
       try {
         const res = await postForm('/artifacts/audio' + qs, fd);
+        STATE.transcript_path = res.transcript_path || "";
         const chars = res.transcript_chars ?? '?';
         const prev  = esc(res.preview ?? '').trim();
-        if (prev) {
-          setMsgHTML(
-            `Audio ✓&nbsp; transcript: ${chars} chars
-             <details style="display:inline-block;margin-left:8px;">
-               <summary style="cursor:pointer;color:#e8edf2;display:inline;">Preview</summary>
-               <pre style="white-space:pre-wrap;margin:.35rem 0 0;color:#a8b2bd;">${prev}</pre>
-             </details>`
-          );
-        } else {
-          setMsg(`Audio ✓  transcript: ${chars} chars`);
-        }
-      } catch (e) {
-        setMsg('Audio upload failed');
-      } finally {
-        $('audioFile').value = '';
-      }
+        setMsgHTML(prev
+          ? `Audio ✓ transcript: ${chars} chars <details style="display:inline-block;margin-left:8px;"><summary style="cursor:pointer;color:#e8edf2;display:inline;">Preview</summary><pre style="white-space:pre-wrap;margin:.35rem 0 0;color:#a8b2bd;">${prev}</pre></details>`
+          : `Audio ✓ transcript: ${chars} chars`);
+        await refreshCandidates(); $('cand').value = cand; $('candSelect').value = cand;
+      } catch { setMsg('Audio upload failed'); }
+      finally { $('audioFile').value = ''; }
+    });
+
+    // Build Evidence (native UL/LI; ✓ prefix kept inside content, not layout)
+    $('evidenceBtn').addEventListener('click', async () => {
+      if (!STATE.schema) { alert('Compile the JD first.'); return; }
+      const cand = ($('candSelect').value || $('cand').value || '').trim() || 'anon';
+      const payload = { candidate_id: cand, schema: STATE.schema, claims: STATE.claims || [], transcript_path: STATE.transcript_path || null };
+
+      setMsg('Building evidence map…');
+      try {
+        const r = await fetch('/evidence/build', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+        if (!r.ok) throw new Error(await r.text());
+        const data = await r.json();
+
+        // Coverage header
+        $('coverage').style.display = 'flex';
+        $('covOverall').textContent = `Overall: ${data.coverage?.overall ?? '?'}%`;
+        const ct = $('covThemes'); ct.innerHTML = '';
+        const by = data.coverage?.by_theme || {};
+        Object.keys(by).forEach(name => { const pill = document.createElement('span'); pill.className = 'pill'; pill.textContent = `${name}: ${by[name]}%`; ct.appendChild(pill); });
+
+        // Render requirements and receipts with native bullets
+        const grid = $('themes'); grid.innerHTML = '';
+        const adapter = data.adapter || {};
+        const themes = STATE.schema?.themes || [];
+
+        themes.forEach(t => {
+          const rows = adapter[t.name] || [];
+          const div = document.createElement('div');
+          div.className = 'theme';
+
+          const reqList = rows.map(row => {
+            const has = (row.evidence || []).length > 0;
+            const evid = (row.evidence || []).map(ev => {
+              const src = (ev.source_ref?.kind || 'artifact');
+              const line = ev.source_ref?.line != null ? ` #${ev.source_ref.line}` : '';
+              return `<li class="muted">[${src}${line}] ${esc(ev.snippet)}</li>`;
+            }).join('');
+            const receipt = evid ? `<details class="receipt"><summary>Receipts</summary><ul>${evid}</ul></details>` : '';
+            const mark = has ? `<span class="hit">✓</span>` : '';
+            return `<li>${mark}${esc(row.requirement)}</li>${receipt}`;
+          }).join('');
+
+          const siList = (t.success_indicators || []).map(x =>
+            `<li>${esc(x)}</li>`
+          ).join('');
+
+          div.innerHTML = `
+            <h3>${t.name || 'Theme'}</h3>
+            <strong>Requirements (matched show ✓)</strong>
+            <ul>${reqList}</ul>
+            <strong>Success Indicators</strong>
+            <ul>${siList}</ul>
+          `;
+          grid.appendChild(div);
+        });
+
+        setMsg('Evidence ✓  coverage updated');
+        document.querySelector('#result').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      } catch { setMsg('Evidence build failed'); }
     });
   </script>
 </body>

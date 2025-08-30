@@ -5,7 +5,8 @@ from fastapi.responses import RedirectResponse
 
 from .routes.jd import router as jd_router
 from .routes.ui import router as ui_router
-from .routes.artifacts import router as artifacts_router  # NEW
+from .routes.artifacts import router as artifacts_router
+from .routes.evidence import router as evidence_router  # ✅ add
 
 app = FastAPI(title="Stimulus AI (48h POC)")
 
@@ -27,10 +28,10 @@ def health():
 
 @app.get("/", include_in_schema=False)
 def home():
-    # 307 preserves method if we ever POST to "/" (safety); 302/308 also fine.
     return RedirectResponse(url="/ui/adapter", status_code=307)
 
 # Routers
-app.include_router(jd_router, prefix="/jd", tags=["jd"])
-app.include_router(ui_router, prefix="/ui", tags=["ui"])
-app.include_router(artifacts_router, prefix="/artifacts", tags=["artifacts"])  # NEW
+app.include_router(jd_router,        prefix="/jd",        tags=["jd"])
+app.include_router(ui_router,        prefix="/ui",        tags=["ui"])
+app.include_router(artifacts_router, prefix="/artifacts", tags=["artifacts"])
+app.include_router(evidence_router, tags=["evidence"])  # ✅ add - no prefix
