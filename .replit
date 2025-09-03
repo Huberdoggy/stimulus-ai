@@ -45,3 +45,6 @@ language = "python"
 
 [gitHubImport]
 requiredFiles = [".replit", "replit.nix"]
+
+[agent]
+expertMode = true

@@ -288,6 +288,9 @@ textarea:focus{ border-color: var(--ring-strong); box-shadow: 0 0 0 3px var(--ri
 .theme ul{ margin:.1rem 0 .6rem 1.1rem; color:var(--muted); }
 .theme li{ margin:.18rem 0; }
 
+/* Matched token inside a receipt snippet (color-only; fits the palette) */
+.hit { color: #29d3ff; }
+
 /* a11y */
 .sr-only{
   position:absolute!important; width:1px!important; height:1px!important;
