@@ -9,7 +9,6 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import JSONResponse
 
-# Keep your module layout — these exist in your project
 from ..services.ingest import extract_text_from_bytes, normalize_resume_text
 from ..services.transcribe import transcribe_audio_bytes  # type: ignore[import]
 
@@ -39,7 +38,7 @@ def _web_path(abs_under_static: str) -> str:
     rel = abs_under_static[len(_APP_STATIC):].lstrip(os.sep).replace(os.sep, "/")
     return f"/static/{rel}"
 
-# ---------- Discovery helpers (for UI picker) ----------
+# ---------- Discovery helpers ----------
 def _list_candidates() -> List[str]:
     names: set[str] = set()
     for base in (_RESUMES, _AUDIO):
@@ -99,7 +98,6 @@ def load_latest_for_candidate(candidate_id: str) -> Dict[str, Any]:
             with open(claims_json_path, "r", encoding="utf-8") as f:
                 claims = json.load(f)
             claims_json_web = _web_path(claims_json_path)
-            # Infer original resume filename (strip ".claims.json")
             raw_resume = claims_json_path[:-len(".claims.json")]
             if os.path.exists(raw_resume):
                 resume_path_web = _web_path(raw_resume)
@@ -124,7 +122,7 @@ def load_latest_for_candidate(candidate_id: str) -> Dict[str, Any]:
             "resume_path": resume_path_web,
             "claims_json_path": claims_json_web,
             "claims_count": len(claims),
-            "claims": claims,  # provided so the UI can build evidence without re-upload
+            "claims": claims,
             "transcript_path": transcript_web,
             "transcript_chars": transcript_chars,
             "transcript_preview": transcript_preview,
@@ -155,14 +153,34 @@ async def upload_resume(
     except Exception as e:
         raise HTTPException(400, f"Failed to save resume: {e}")
 
-    # Extract + normalize
-    try:
-        text = extract_text_from_bytes(filename, data)
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Failed to extract text: {e}")
-    claims = normalize_resume_text(text)
+    dry_override: Optional[bool] = None if dry is None else bool(dry)
 
-    # Persist claims.json next to the resume
+    # DRY: synthesize stub claims instead of parsing
+    if dry_override:
+        claims = [
+            {
+                "id": "r0001",
+                "text": "Delivered role-relevant outcomes within stated timelines; collaborated cross-functionally.",
+                "source_ref": {"kind": "resume", "line": 1},
+                "tags": []
+            },
+            {
+                "id": "r0002",
+                "text": "Led initiatives end-to-end; documented process and measurable results.",
+                "source_ref": {"kind": "resume", "line": 2},
+                "tags": []
+            },
+        ]
+        text_len = 0
+    else:
+        # Live: extract + normalize
+        try:
+            text = extract_text_from_bytes(filename, data)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Failed to extract text: {e}")
+        claims = normalize_resume_text(text)
+        text_len = len(text)
+
     claims_json_path = abs_path + ".claims.json"
     try:
         with open(claims_json_path, "w", encoding="utf-8") as f:
@@ -173,11 +191,11 @@ async def upload_resume(
     return JSONResponse({
         "ok": True,
         "path": _web_path(abs_path),
-        "text_chars": len(text),
+        "text_chars": text_len,
         "claims_count": len(claims),
         "claims": claims,
         "claims_json_path": _web_path(claims_json_path),
-        "dry_mode": None if dry is None else bool(dry),
+        "dry_mode": dry_override,
     })
 
 # ---------- Upload: audio (persists transcript .txt) ----------
@@ -203,14 +221,12 @@ async def upload_audio(
     except Exception as e:
         raise HTTPException(400, f"Failed to save audio: {e}")
 
-    # Correct signature: transcribe_audio_bytes(filename: str, data: bytes, *, dry_mode: Optional[bool])
     dry_override: Optional[bool] = None if dry is None else bool(dry)
     try:
         transcript: str = transcribe_audio_bytes(filename=filename, data=data, dry_mode=dry_override)
     except TypeError:
-        # Fallback for prior signature variants: (filename, data) or (filename, data, dry)
         try:
-            transcript = transcribe_audio_bytes(filename, data)  # type: ignore[misc]
+            transcript = transcribe_audio_bytes(filename, data)  # legacy signature
         except Exception as e2:
             raise HTTPException(500, f"Transcription failed: {e2}")
     except Exception as e:

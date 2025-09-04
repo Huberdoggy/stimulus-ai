@@ -1,0 +1,16 @@
+{
+  "stop": ["the","and","of","to","a","in","for","on","as","with","by","or","an","be","at","from","is","are","was","were","it","that","this","these","those"],
+  "aliases": {
+    "leadership": ["led","managed","oversaw","mentored","coached","owner","owned"],
+    "delivery": ["delivered","shipped","launched","deployed","released","rolled out"],
+    "metrics": ["kpi","sla","target","throughput","csat","nps","uptime","conversion","revenue","churn","accuracy","latency"],
+    "ai": ["llm","prompt","chatgpt","openai","anthropic","gemini","whisper","embedding","vector","rag","transformer"],
+    "data": ["sql","python","pandas","etl","pipeline","analytics","insights","dashboard","bi"],
+    "product": ["roadmap","backlog","user stories","ux","ui","prototype","mvp","discovery","requirements","stakeholder"],
+    "ops": ["process","sop","workflow","incident","on-call","runbook","rca","sre","monitoring","alerting"],
+    "compliance": ["hipaa","gdpr","soc 2","pci","osha","ferpa","sox"],
+    "education": ["curriculum","instruction","classroom","students","lesson","assessment"],
+    "healthcare": ["patient","clinical","emr","ehr","medication","safety","care"],
+    "sales": ["pipeline","prospecting","quota","crm","deal","renewal","upsell","cold call"]
+  }
+}

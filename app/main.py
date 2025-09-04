@@ -6,11 +6,11 @@ from fastapi.responses import RedirectResponse
 from .routes.jd import router as jd_router
 from .routes.ui import router as ui_router
 from .routes.artifacts import router as artifacts_router
-from .routes.evidence import router as evidence_router  # ✅ add
+from .routes.evidence import router as evidence_router
 
 app = FastAPI(title="Stimulus AI (48h POC)")
 
-# Static assets (images, css)
+# Static assets
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
 # Permissive CORS for quick demo
@@ -30,8 +30,8 @@ def health():
 def home():
     return RedirectResponse(url="/ui/adapter", status_code=307)
 
-# Routers
+# Routers (prefixes defined here only, for consistency)
 app.include_router(jd_router,        prefix="/jd",        tags=["jd"])
 app.include_router(ui_router,        prefix="/ui",        tags=["ui"])
 app.include_router(artifacts_router, prefix="/artifacts", tags=["artifacts"])
-app.include_router(evidence_router, tags=["evidence"])  # ✅ add - no prefix
+app.include_router(evidence_router,  prefix="/evidence",  tags=["evidence"])

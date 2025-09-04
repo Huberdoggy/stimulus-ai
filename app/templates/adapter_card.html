@@ -12,22 +12,21 @@
   <!-- Theme CSS -->
   <link rel="stylesheet" href="/static/styles.css">
 
-  <!-- Inline tweaks: picker + coverage (native bullets) -->
+  <!-- Inline tweaks: picker + coverage + receipts sizing -->
   <style>
     .coverage{ margin-top:12px; display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
     .coverage__overall{ font-weight:700; padding:.28rem .6rem; border-radius:999px; background:rgba(52,211,153,.14); border:1px solid rgba(52,211,153,.35); box-shadow:0 0 0 2px rgba(52,211,153,.12); }
     .pill{ padding:.2rem .5rem; border-radius:999px; border:1px solid rgba(255,255,255,.12); background: rgba(255,255,255,.04); font-size:.9rem; }
 
     details.receipt{ margin:.18rem 0 .35rem 1.1rem; }
+    details.receipt > ul{ max-height:220px; overflow:auto; padding-right:6px; }
+    .receipt__snippet{ word-break: break-word; }
     .muted{ color:#a8b2bd; }
 
     .row{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
     .select{ height:38px; padding:0 10px; border-radius:999px; border:1px solid rgba(255,255,255,.12); background:#0d141d; color:#e8edf2; outline:none; }
     .select:focus{ box-shadow:0 0 0 3px rgba(41,211,255,.22); }
     .note{ font-size:.92rem; color:#a8b2bd; }
-
-    .open-qs{ margin:.1rem 0 .5rem 1.1rem; }
-    .open-qs em{ font-style:normal; color:#e8edf2; display:block; margin-bottom:.15rem; }
   </style>
 </head>
 <body>
@@ -73,7 +72,6 @@
             <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M18.3 5.71L12 12.01 5.7 5.71 4.29 7.12 10.6 13.4 4.29 19.7 5.7 21.11 12 14.82 18.3 21.11 19.71 19.7 13.42 13.4 19.71 7.12z"/></svg>
           </button>
 
-          <!-- Divider -->
           <div aria-hidden="true" style="width:1px;height:32px;margin:0 6px;background:linear-gradient(to bottom,rgba(255,255,255,.06),rgba(255,255,255,.14),rgba(255,255,255,.06));border-radius:1px;"></div>
 
           <!-- Candidate row -->
@@ -168,7 +166,6 @@
     }
     refreshCandidates(); setInterval(refreshCandidates, 15000);
 
-    // Sync chip & picker
     $('cand').addEventListener('input', () => {
       const v = ($('cand').value || '').trim();
       const sel = $('candSelect');
@@ -309,82 +306,123 @@
       finally { $('audioFile').value = ''; }
     });
 
-    // Highlight hit terms inside a snippet (case-insensitive, longest-first)
+    // Robust, non-nesting highlighter (build ranges first, then wrap once)
     function highlightTerms(snippetEscaped, terms){
-      let out = snippetEscaped || '';
-      const uniq = Array.from(new Set((terms || []).filter(Boolean)));
-      uniq.sort((a,b) => (b.length||0) - (a.length||0));
+      const text = snippetEscaped || '';
+      const uniq = Array.from(new Set((terms || []).map(t => (t||'').toString()).filter(Boolean)));
+      uniq.sort((a,b) => (b.length||0)-(a.length||0)); // longest-first
+      const lower = text.toLowerCase();
+      const ranges = [];
+
       for (const term of uniq){
-        const esc = (term+'').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        const re = new RegExp(esc, 'ig');
-        out = out.replace(re, (m) => `<span class="hit">${m}</span>`);
+        const t = term.toLowerCase();
+        if (!t) continue;
+        let idx = 0;
+        while (idx < lower.length){
+          const at = lower.indexOf(t, idx);
+          if (at === -1) break;
+          ranges.push([at, at + t.length]);
+          idx = at + Math.max(1, t.length);
+        }
       }
+      // Merge overlaps
+      ranges.sort((a,b)=>a[0]-b[0]);
+      const merged = [];
+      for (const r of ranges){
+        if (!merged.length || r[0] > merged[merged.length-1][1]){
+          merged.push(r.slice());
+        } else {
+          merged[merged.length-1][1] = Math.max(merged[merged.length-1][1], r[1]);
+        }
+      }
+      // Build HTML
+      let out = '';
+      let prev = 0;
+      for (const [s,e] of merged){
+        out += text.slice(prev, s);
+        out += '<span class="hit">' + text.slice(s,e) + '</span>';
+        prev = e;
+      }
+      out += text.slice(prev);
       return out;
     }
 
-    // Build Evidence (LLM-backed)
+    // Build Evidence (LLM-backed; auto-fallback to lexicon on failure)
     $('evidenceBtn').addEventListener('click', async () => {
       if (!STATE.schema) { alert('Compile the JD first.'); return; }
       const cand = ($('candSelect').value || $('cand').value || '').trim() || 'anon';
       const payload = { candidate_id: cand, schema: STATE.schema, claims: STATE.claims || [], transcript_path: STATE.transcript_path || null };
 
       setMsg('Building evidence map…');
+      const live = $('live').checked;
+      const qs = live ? '?dry=0' : '';
       try {
-        const live = $('live').checked;
-        const qs = live ? '?dry=0' : '';
         const r = await fetch('/evidence/build' + qs, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
         if (!r.ok) throw new Error(await r.text());
         const data = await r.json();
-
-        // Coverage header
-        $('coverage').style.display = 'flex';
-        $('covOverall').textContent = `Overall: ${data.coverage?.overall ?? '?'}%`;
-        const ct = $('covThemes'); ct.innerHTML = '';
-        const by = data.coverage?.by_theme || {};
-        Object.keys(by).forEach(name => { const pill = document.createElement('span'); pill.className = 'pill'; pill.textContent = `${name}: ${by[name]}%`; ct.appendChild(pill); });
-
-        // Theme render with receipts + open questions
-        const grid = $('themes'); grid.innerHTML = '';
-        const adapter = data.adapter || {};
-        const themes = STATE.schema?.themes || [];
-
-        themes.forEach(t => {
-          const tname = t.name || 'Theme';
-          const rows = adapter[tname] || [];
-          const div = document.createElement('div');
-          div.className = 'theme';
-
-          const reqList = rows.map(row => {
-            const evid = (row.evidence || []).map(ev => {
-              const src = (ev.source_ref?.kind || 'artifact');
-              const line = ev.source_ref?.line != null ? ` #${ev.source_ref.line}` : '';
-              const snippetHTML = highlightTerms(esc(ev.snippet), ev.hit_terms || []);
-              return `<li class="muted">[${src}${line}] <span class="receipt__snippet">${snippetHTML}</span></li>`;
-            }).join('');
-            const receipt = evid ? `<details class="receipt"><summary>Receipts</summary><ul>${evid}</ul></details>` : '';
-
-            const oqs = (row.open_questions || []);
-            const oqHTML = oqs.length ? `<div class="open-qs"><em>Open questions</em><ul>${oqs.map(q => `<li class="muted">${esc(q)}</li>`).join('')}</ul></div>` : '';
-
-            return `<li><span>${esc(row.requirement || '')}</span>${receipt}${oqHTML}</li>`;
-          }).join('');
-
-          const siList = (t.success_indicators || []).map(x => `<li>${esc(x)}</li>`).join('');
-
-          div.innerHTML = `
-            <h3>${tname}</h3>
-            <strong>Requirements (matched items show receipts)</strong>
-            <ul class="reqs">${reqList}</ul>
-            <strong>Success Indicators</strong>
-            <ul class="reqs">${siList}</ul>
-          `;
-          grid.appendChild(div);
-        });
-
-        setMsg('Evidence ✓  coverage updated');
-        document.querySelector('#result').scrollIntoView({ behavior: 'smooth', block: 'start' });
-      } catch (e) { setMsg('Evidence build failed'); }
+        renderEvidence(data);
+      } catch (e) {
+        // Confirm→fallback to lexicon (DRY)
+        const ok = window.confirm('Live build failed or API unavailable. Use lexicon fallback instead?');
+        if (!ok) { setMsg('Evidence build cancelled'); return; }
+        try{
+          const r2 = await fetch('/evidence/build?dry=1', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+          if (!r2.ok) throw new Error(await r2.text());
+          const data2 = await r2.json();
+          renderEvidence(data2);
+        } catch { setMsg('Fallback build failed'); }
+      }
     });
+
+    function renderEvidence(data){
+      // Coverage header
+      $('coverage').style.display = 'flex';
+      $('covOverall').textContent = `Overall: ${data.coverage?.overall ?? '?'}%`;
+      const ct = $('covThemes'); ct.innerHTML = '';
+      const by = data.coverage?.by_theme || {};
+      Object.keys(by).forEach(name => { const pill = document.createElement('span'); pill.className = 'pill'; pill.textContent = `${name}: ${by[name]}%`; ct.appendChild(pill); });
+
+      // Theme render with receipts + open questions
+      const grid = $('themes'); grid.innerHTML = '';
+      const adapter = data.adapter || {};
+      const themes = STATE.schema?.themes || [];
+
+      themes.forEach(t => {
+        const tname = t.name || 'Theme';
+        const rows = adapter[tname] || [];
+        const div = document.createElement('div');
+        div.className = 'theme';
+
+        const reqList = rows.map(row => {
+          const evid = (row.evidence || []).map(ev => {
+            const src = (ev.source_ref?.kind || 'artifact');
+            const line = ev.source_ref?.line != null ? ` #${ev.source_ref.line}` : '';
+            const snippetHTML = highlightTerms(esc(ev.snippet), ev.hit_terms || []);
+            return `<li class="muted">[${src}${line}] <span class="receipt__snippet">${snippetHTML}</span></li>`;
+          }).join('');
+          const receipt = evid ? `<details class="receipt"><summary>Receipts</summary><ul>${evid}</ul></details>` : '';
+
+          const oqs = (row.open_questions || []);
+          const oqHTML = oqs.length ? `<div class="open-qs"><em>Open questions</em><ul>${oqs.map(q => `<li class="muted">${esc(q)}</li>`).join('')}</ul></div>` : '';
+
+          return `<li><span>${esc(row.requirement || '')}</span>${receipt}${oqHTML}</li>`;
+        }).join('');
+
+        const siList = (t.success_indicators || []).map(x => `<li>${esc(x)}</li>`).join('');
+
+        div.innerHTML = `
+          <h3>${tname}</h3>
+          <strong>Requirements (matched items show receipts)</strong>
+          <ul class="reqs">${reqList}</ul>
+          <strong>Success Indicators</strong>
+          <ul class="reqs">${siList}</ul>
+        `;
+        grid.appendChild(div);
+      });
+
+      setMsg('Evidence ✓  coverage updated');
+      document.querySelector('#result').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
   </script>
 </body>
 </html>

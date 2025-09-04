@@ -5,7 +5,6 @@ from typing import Dict
 from pydantic import BaseModel
 
 # ------------------------ env helpers ------------------------
-
 def truthy(name: str, default: str = "1") -> bool:
     v = os.getenv(name, default)
     if v is None:
@@ -13,21 +12,18 @@ def truthy(name: str, default: str = "1") -> bool:
     v = v.strip().strip('"').strip("'").lower()
     return v in {"1", "true", "yes", "on", "y"}
 
-# Frugal default; allow stronger model for Live
-LLM_MODEL = os.getenv("LLM_MODEL", "gpt-4o-mini")
-LLM_MODEL_LIVE = os.getenv("LLM_MODEL_LIVE", "") or LLM_MODEL
+# Single model knob (live only)
+MODEL_LIVE = os.getenv("LLM_MODEL_LIVE", "gpt-4o-mini")
 
 DRY_MODE_DEFAULT = truthy("DRY_MODE", "1")
 
 # ------------------------ schema guard ------------------------
-
 class SixtySecondJD(BaseModel):
     role_title: str
     company: str | None = None
     themes: list[Dict]  # [{name, requirements:[], success_indicators:[]}]
 
 # ------------------------ normalization ------------------------
-
 _PLACEHOLDERS = {"not specified", "unspecified", "n/a", "na", "none", "null", ""}
 
 def _normalize_company(val):
@@ -39,7 +35,6 @@ def _normalize_company(val):
     return s
 
 # ------------------------ domain-agnostic system prompt ------------------------
-
 _SYSTEM_PROMPT = """
 You are a domain-agnostic, JSON-only compiler. Extract exclusively what appears in the Job Description (JD).
 Return ONE JSON object with keys:
@@ -63,7 +58,6 @@ Rules:
 """.strip()
 
 # ------------------------ compiler ------------------------
-
 def compile_60s_jd(raw_text: str, *, dry_mode: bool | None = None) -> dict:
     """
     Compile a JD into the 60-second schema. DRY mode returns an echo-stub.
@@ -72,7 +66,6 @@ def compile_60s_jd(raw_text: str, *, dry_mode: bool | None = None) -> dict:
     use_dry = DRY_MODE_DEFAULT if dry_mode is None else dry_mode
 
     if use_dry:
-        # DRY: echo first non-empty line for visibility; use a generic theme label.
         first_line = next((ln.strip() for ln in raw_text.splitlines() if ln.strip()), "")
         stub = {
             "role_title": first_line or "60-Second JD (Stub)",
@@ -94,13 +87,12 @@ def compile_60s_jd(raw_text: str, *, dry_mode: bool | None = None) -> dict:
     # ---- live call (high fidelity, cross-domain) ----
     from openai import OpenAI
     client = OpenAI()
-    model = LLM_MODEL_LIVE or LLM_MODEL
 
     system = _SYSTEM_PROMPT
     user = f"JD:\n{raw_text}"
 
     resp = client.chat.completions.create(
-        model=model,
+        model=MODEL_LIVE,
         temperature=0.1,
         messages=[
             {"role": "system", "content": system},
@@ -119,9 +111,8 @@ def compile_60s_jd(raw_text: str, *, dry_mode: bool | None = None) -> dict:
             raise
         data = json.loads(m.group(0))
 
-    # Normalize company and clean empty items
+    # Normalize + validate
     data["company"] = _normalize_company(data.get("company"))
-
     if "role_title" not in data or "themes" not in data:
         raise ValueError("Model returned incomplete schema.")
 
@@ -134,11 +125,9 @@ def compile_60s_jd(raw_text: str, *, dry_mode: bool | None = None) -> dict:
             cleaned_themes.append({"name": name, "requirements": reqs, "success_indicators": succ})
     data["themes"] = cleaned_themes
 
-    # Validate shape
     SixtySecondJD(**{
         "role_title": data["role_title"],
         "company": data.get("company"),
         "themes": data["themes"],
     })
-
     return data

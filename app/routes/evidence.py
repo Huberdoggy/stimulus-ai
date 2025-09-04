@@ -11,25 +11,24 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field, ConfigDict
 from openai import OpenAI
 
-# Router keeps its own prefix; main.py includes WITHOUT an extra prefix.
-router = APIRouter(prefix="/evidence", tags=["evidence"])
+# Router: no prefix here; main.py applies /evidence
+router = APIRouter(tags=["evidence"])
 
-# ---------- Project paths (robust) ----------
+# ---------- Project paths ----------
 def _find_app_dir(here: Path) -> Path:
-    # Walk up until we hit a folder literally named "app"
     for p in [here] + list(here.parents):
         if p.name == "app":
             return p
-    # Fallback: assume .../app two levels up (repo/app)
     return here.parents[1] / "app"
 
 HERE = Path(__file__).resolve()
-APP_DIR = _find_app_dir(HERE)               # .../app
-ROOT_DIR = APP_DIR.parent                   # repo root
-STATIC_DIR = APP_DIR / "static"             # .../app/static
+APP_DIR = _find_app_dir(HERE)
+ROOT_DIR = APP_DIR.parent
+STATIC_DIR = APP_DIR / "static"
 UPLOADS_DIR = STATIC_DIR / "uploads"
 RESUME_DIR = UPLOADS_DIR / "resumes"
 AUDIO_DIR = UPLOADS_DIR / "audio"
+LEXICON_PATH = STATIC_DIR / "lexicon.json"
 
 # ---------- Env / model selection ----------
 def truthy(name: str, default: str = "1") -> bool:
@@ -39,8 +38,7 @@ def truthy(name: str, default: str = "1") -> bool:
     v = v.strip().strip('"').strip("'").lower()
     return v in {"1", "true", "yes", "on", "y"}
 
-LLM_MODEL = os.getenv("LLM_MODEL", "gpt-4o-mini")
-LLM_MODEL_LIVE = os.getenv("LLM_MODEL_LIVE", "") or LLM_MODEL
+MODEL_LIVE = os.getenv("LLM_MODEL_LIVE", "gpt-4o-mini")
 DRY_MODE_DEFAULT = truthy("DRY_MODE", "1")
 
 # ---------- Validation ----------
@@ -138,7 +136,6 @@ def _sentences(text: str) -> List[str]:
             out.append(s)
         else:
             out.extend(_chunk_text(s, max_len=280, min_len=60))
-    # de-dup adjacent
     dedup: List[str] = []
     for s in out:
         if not dedup or s != dedup[-1]:
@@ -150,10 +147,6 @@ def _sentences(text: str) -> List[str]:
     return dedup[:200]
 
 def _resolve_static_web_path(web_path: str) -> Optional[Path]:
-    """
-    Accept '/static/uploads/audio/...txt' or 'app/static/uploads/audio/...txt'.
-    Return a filesystem Path if it exists under app/static/uploads/audio, else None.
-    """
     if not web_path:
         return None
     rel = unquote(web_path).lstrip("/")
@@ -187,19 +180,16 @@ SYSTEM_PROMPT = (
     "(2) a list of candidate claims (id, text, source: \"resume\" or \"transcript\", and optional line).\n"
     "Your job: For EACH requirement in EACH theme, select up to TWO supporting claims from the list and produce:\n"
     "• evidence: array of {claim_id, hit_terms[]} where hit_terms are the EXACT tokens or short substrings copied verbatim from that claim’s text that justify the match.\n"
-    "• open_questions: array of up to 2 concise questions to clarify gaps ONLY if evidence is weak or missing.\n\n"
+    "• open_questions: array of up to 2 concise, ACTIONABLE questions (no vague phrases like 'tell me more') to clarify gaps ONLY if evidence is weak or missing.\n\n"
     "Strict rules:\n"
     "• Do not invent text. Only use claims provided.\n"
-    "• Prefer source diversity when two candidates are comparable: if both resume and transcript fit, choose one of each.\n"
+    "• Prefer source diversity when two candidates are comparable.\n"
+    "• If a requirement has TWO evidence items AND both resume and transcript claims exist, choose ONE from each source (resume+transcript) unless no transcript claim is reasonably relevant—in that case include 1 transcript-based open question.\n"
     "• Keep hit_terms minimal and meaningful: 1–8 items, each 1–40 chars, must appear verbatim in the claim text (case-insensitive allowed) and relate directly to the requirement.\n"
     "• Limit evidence to 0–2 items per requirement.\n"
-    "• If multiple candidates are equally good, tie-break deterministically in this order:\n"
-    "  (a) higher semantic relevance to the requirement,\n"
-    "  (b) source diversity (resume+transcript over two of the same),\n"
-    "  (c) earlier occurrence in the provided claims array.\n"
-    "• If you select 0 evidence items for a requirement, include at least 1 open question for that requirement.\n"
+    "• If you select 0 evidence items for a requirement, include at least 1 actionable open question for that requirement.\n"
     "• Adapter keys MUST be the EXACT theme names from the provided schema.\n"
-    "• GLOBAL CONSTRAINT: If any transcript claims are present in the input, you MUST include at least one transcript-based evidence item somewhere in the output. If all transcript claims are weak, select the single most relevant transcript claim and include an open question explaining the gap.\n"
+    "• GLOBAL CONSTRAINT: If any transcript claims are present in the input, include at least one transcript-based evidence item somewhere in the output. If all transcript claims are weak, select the single most relevant transcript claim and include an open question explaining the gap.\n"
     "• Output JSON ONLY. No extra keys, no markdown.\n\n"
     "Output JSON schema (theme keys must be actual names):\n"
     "{\n"
@@ -299,11 +289,105 @@ def _resolve_and_score(adapter_in: Dict[str, Any], jd: Dict[str, Any], id2claim:
     counts = {"requirements": total_reqs, "hit": hit_reqs}
     return adapter, coverage, counts, used_any_transcript
 
+# ---------- DRY (lexicon) helpers ----------
+def _load_lexicon() -> Dict[str, Any]:
+    if LEXICON_PATH.exists():
+        try:
+            return json.loads(LEXICON_PATH.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+    # Sensible defaults if missing
+    return {
+        "stop": ["the","and","of","to","a","in","for","on","as","with","by","or","an","be","at","from","is","are","was","were","it","that","this","these","those"],
+        "aliases": {
+            "leadership": ["led","managed","oversaw","mentored","coached","owner","owned"],
+            "delivery": ["delivered","shipped","launched","deployed","released","rolled out"],
+            "metrics": ["kpi","sla","target","throughput","csat","nps","uptime","conversion","revenue","churn","accuracy","latency"],
+            "ai": ["llm","prompt","chatgpt","openai","anthropic","gemini","whisper","embedding","vector","rag","transformer"],
+            "data": ["sql","python","pandas","etl","pipeline","analytics","insights","dashboard","bi"],
+            "product": ["roadmap","backlog","user stories","ux","ui","prototype","mvp","discovery","requirements","stakeholder"],
+            "ops": ["process","sop","workflow","incident","on-call","runbook","rca","sre","monitoring","alerting"],
+            "compliance": ["hipaa","gdpr","soc 2","pci","osha","ferpa","sox"],
+            "education": ["curriculum","instruction","classroom","students","lesson","assessment"],
+            "healthcare": ["patient","clinical","emr","ehr","medication","safety","care"],
+            "sales": ["pipeline","prospecting","quota","crm","deal","renewal","upsell","cold call"]
+        }
+    }
+
+_TOKEN = re.compile(r"[A-Za-z0-9\+\#\.\-']+")
+
+def _tokens(s: str) -> List[str]:
+    return [w.lower() for w in _TOKEN.findall(s or "")]
+
+def _expand_aliases(tokens: List[str], lex: Dict[str, Any]) -> List[str]:
+    aliases = lex.get("aliases", {})
+    out = set(tokens)
+    for canon, alts in aliases.items():
+        alts_set = {a.lower() for a in (alts or [])}
+        if any(t in alts_set or t == canon for t in tokens):
+            out.add(canon)
+    return list(out)
+
+def _score(req_tokens: set[str], claim_tokens: set[str], stop: set[str]) -> tuple[int, List[str]]:
+    inter = [t for t in claim_tokens.intersection(req_tokens) if t not in stop]
+    return len(inter), inter[:8]
+
+def _dry_lexicon_adapter(jd: Dict[str, Any], claims: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
+    lex = _load_lexicon()
+    stop = set(lex.get("stop", []))
+    # Pre-tokenize claims w/ alias expansion
+    c_vecs = []
+    for c in claims:
+        toks = _expand_aliases(_tokens(c.get("text","")), lex)
+        c_vecs.append((c, set(toks)))
+
+    out: Dict[str, List[Dict[str, Any]]] = {}
+    for t in (jd.get("themes") or []):
+        tname = (t.get("name") or "").strip() or "Theme"
+        rows: List[Dict[str, Any]] = []
+        for req in (t.get("requirements") or []):
+            rtoks = _expand_aliases(_tokens(req), lex)
+            rt = set(rtoks)
+            # Score all claims
+            scored = []
+            for c, toks in c_vecs:
+                s, hits = _score(rt, toks, stop)
+                if s > 0:
+                    scored.append((s, c, hits))
+            scored.sort(key=lambda x: (-x[0], (x[1].get("source") != "transcript"), x[1].get("id","")))
+
+            # Choose up to 2, enforce diversity when possible
+            chosen: List[Dict[str, Any]] = []
+            have_resume = any(c.get("source") == "resume" for _, c, _ in scored)
+            have_trans  = any(c.get("source") == "transcript" for _, c, _ in scored)
+
+            for s, c, hits in scored:
+                if len(chosen) >= 2:
+                    break
+                # If both sources exist overall and we already picked resume, favor transcript next (and vice versa)
+                if len(chosen) == 1 and have_resume and have_trans:
+                    if chosen[0]["source_ref"]["kind"] == c.get("source"):
+                        continue
+                chosen.append({
+                    "source_ref": {"kind": c.get("source"), "line": c.get("line")},
+                    "snippet": c.get("text",""),
+                    "hit_terms": hits
+                })
+
+            # Actionable OQs if nothing chosen
+            oq = []
+            if not chosen:
+                oq = [f"Share a concrete example for “{req}” (scope, tools, and metric/outcome)."]
+
+            rows.append({"requirement": req, "evidence": chosen, "open_questions": oq})
+        out[tname] = rows
+    return out
+
 # ---------- Core route ----------
 @router.post("/build")
 def build_evidence(
     payload: EvidenceIn,
-    dry: int | None = Query(None, description="1=stub, 0=live"),
+    dry: int | None = Query(None, description="1=stub (lexicon), 0=live"),
 ):
     cand = _safe_cand(payload.candidate_id)
     jd = payload.jd_schema or {}
@@ -329,7 +413,7 @@ def build_evidence(
         if cjson:
             resume_claims = _load_resume_claims(cjson)
 
-    # Transcript: resolve provided path; if it yields zero claims, fall back to latest
+    # Transcript claims
     transcript_claims: List[Dict[str, Any]] = []
     if payload.transcript_path:
         p = _resolve_static_web_path(payload.transcript_path)
@@ -346,23 +430,26 @@ def build_evidence(
     theme_names = [(t.get("name") or "").strip() or "Theme" for t in themes]
     transcript_exists = any(c.get("source") == "transcript" for c in claims_llm)
 
-    # DRY vs LIVE
     use_dry = DRY_MODE_DEFAULT if dry is None else bool(dry)
     if use_dry:
-        adapter: Dict[str, List[Dict[str, Any]]] = {}
-        total_reqs = 0
+        adapter = _dry_lexicon_adapter(jd, claims_llm)
+        # Coverage
+        cov_by = {}
+        total = 0
+        hit = 0
         for t in themes:
             tname = (t.get("name") or "").strip() or "Theme"
-            reqs = [r for r in (t.get("requirements") or []) if str(r).strip()]
-            total_reqs += len(reqs)
-            adapter[tname] = [{"requirement": r, "evidence": [], "open_questions": []} for r in reqs]
-        coverage = {"by_theme": {k: 0.0 for k in adapter.keys()}, "overall": 0.0}
-        counts = {"requirements": total_reqs, "hit": 0}
+            rows = adapter.get(tname, [])
+            total += len(rows)
+            th = sum(1 for r in rows if (r.get("evidence") or []))
+            cov_by[tname] = round((th / max(1, len(rows))) * 100.0, 1)
+            hit += th
+        coverage = {"by_theme": cov_by, "overall": round((hit / max(1, total)) * 100.0, 1)}
+        counts = {"requirements": total, "hit": hit}
         return {"adapter": adapter, "coverage": coverage, "counts": counts}
 
-    # Live LLM call (JSON-only) with optional nudge
+    # Live LLM call (JSON-only) with diversity & actionable OQ rules baked in
     client = OpenAI()
-    model = LLM_MODEL_LIVE or LLM_MODEL
 
     def call_llm(extra_hint: str = "") -> Dict[str, Any]:
         user_payload = _build_llm_payload(jd, claims_llm, theme_names)
@@ -380,18 +467,15 @@ def build_evidence(
             + (("\n" + extra_hint) if extra_hint else "")
         )
         resp = client.chat.completions.create(
-            model=model or "gpt-4o",
+            model=MODEL_LIVE,
             temperature=0,
             top_p=1,
             messages=[
                 {"role": "system", "content": system_hint},
-                {
-                    "role": "user",
-                    "content": (
-                        'Below is the payload. Use it as the only source of truth. '
-                        'Return only the JSON specified in the System Prompt’s "Output JSON schema".\n\n'
-                        + user_payload
-                    ),
+                {"role": "user", "content":
+                    'Below is the payload. Use it as the only source of truth. '
+                    'Return only the JSON specified in the System Prompt’s "Output JSON schema".\n\n'
+                    + user_payload
                 },
             ],
         )
@@ -416,11 +500,23 @@ def build_evidence(
 
     adapter, coverage, counts, used_any_transcript = _resolve_and_score(adapter_in, jd, id2claim)
 
-    # Optional nudge if no transcript was used but exists
-    if transcript_exists and not used_any_transcript:
+    # Diversity nudge: if transcript exists and not used anywhere, or a requirement shows two same-source hits where both sources exist
+    needs_diversity_pass = transcript_exists and not used_any_transcript
+    if not needs_diversity_pass:
+        for tname, rows in adapter.items():
+            for r in rows:
+                evs = r.get("evidence") or []
+                kinds = {e["source_ref"]["kind"] for e in evs}
+                if len(evs) >= 2 and transcript_exists and kinds == {"resume"}:
+                    needs_diversity_pass = True
+                    break
+            if needs_diversity_pass:
+                break
+
+    if needs_diversity_pass:
         data2 = call_llm(
-            extra_hint="Your previous JSON contained zero transcript-based evidence even though transcript claims were provided. "
-                       "Revise and return JSON that includes at least one transcript-based evidence item (choose the most relevant)."
+            extra_hint="Ensure requirements with two evidence items use resume+transcript when both sources exist. "
+                       "If no reasonable transcript exists, include one transcript-based open question instead."
         )
         adapter_in2 = data2.get("adapter") or {}
         if expected_keys.intersection(set(adapter_in2.keys())):
