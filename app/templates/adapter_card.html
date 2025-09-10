@@ -12,26 +12,25 @@
   <!-- Theme CSS -->
   <link rel="stylesheet" href="/static/styles.css">
 
-  <!-- Inline tweaks: picker + coverage + receipts sizing -->
   <style>
     .coverage{ margin-top:12px; display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
     .coverage__overall{ font-weight:700; padding:.28rem .6rem; border-radius:999px; background:rgba(52,211,153,.14); border:1px solid rgba(52,211,153,.35); box-shadow:0 0 0 2px rgba(52,211,153,.12); }
     .pill{ padding:.2rem .5rem; border-radius:999px; border:1px solid rgba(255,255,255,.12); background: rgba(255,255,255,.04); font-size:.9rem; }
-
     details.receipt{ margin:.18rem 0 .35rem 1.1rem; }
     details.receipt > ul{ max-height:220px; overflow:auto; padding-right:6px; }
     .receipt__snippet{ word-break: break-word; }
     .muted{ color:#a8b2bd; }
-
     .row{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
     .select{ height:38px; padding:0 10px; border-radius:999px; border:1px solid rgba(255,255,255,.12); background:#0d141d; color:#e8edf2; outline:none; }
     .select:focus{ box-shadow:0 0 0 3px rgba(41,211,255,.22); }
     .note{ font-size:.92rem; color:#a8b2bd; }
+    .badge-mini{ display:inline-flex; align-items:center; gap:6px; padding:.2rem .5rem; border-radius:999px; border:1px solid rgba(255,255,255,.12); background:rgba(255,255,255,.04); }
+    .badge-mini video{ width:38px; height:22px; object-fit:cover; border-radius:6px; display:inline-block; }
+    .muted-tip{ opacity:.8 }
   </style>
 </head>
 <body>
 
-  <!-- Intro -->
   <div id="intro" class="intro">
     <img src="/static/mcburney.png" alt="McBurney Group mark" id="introImg" class="intro__img">
   </div>
@@ -88,6 +87,7 @@
           <!-- Hidden file inputs -->
           <input id="resumeFile" type="file" accept=".pdf,.docx,.txt,.md" style="position:absolute;left:-9999px;opacity:0;" />
           <input id="audioFile"  type="file" accept="audio/*"                style="position:absolute;left:-9999px;opacity:0;" />
+          <input id="videoFile"  type="file" accept=".mp4,.mov,.m4v,.webm,.mkv" style="position:absolute;left:-9999px;opacity:0;" />
 
           <!-- Upload buttons -->
           <button id="resumeBtn" class="btn-circle btn-ghost" aria-label="Attach resume" title="Attach resume">
@@ -95,6 +95,9 @@
           </button>
           <button id="audioBtn" class="btn-circle btn-ghost" aria-label="Attach audio" title="Attach audio">
             <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M12 14a3 3 0 0 0 3-3V6a3 3 0 1 0-6 0v5a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 14 0h-2zM11 19h2v3h-2z"></path></svg>
+          </button>
+          <button id="videoBtn" class="btn-circle btn-ghost" aria-label="Attach video" title="Attach video">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M17 10.5V7a2 2 0 0 0-2-2H6A2 2 0 0 0 4 7v10a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2v-3.5l4 4v-11l-4 4z"></path></svg>
           </button>
 
           <!-- Build Evidence -->
@@ -110,7 +113,6 @@
         <h2 id="role" class="result__role"></h2>
         <div id="company" class="result__company"></div>
 
-        <!-- Coverage -->
         <div id="coverage" class="coverage" style="display:none;">
           <span id="covOverall" class="coverage__overall"></span>
           <div id="covThemes" style="display:flex;gap:8px;flex-wrap:wrap;"></div>
@@ -122,14 +124,12 @@
   </div>
 
   <script>
-    // Intro timing
     window.addEventListener('DOMContentLoaded', () => {
       const intro = document.getElementById('intro');
       const app   = document.getElementById('app');
       setTimeout(() => { intro.style.display = 'none'; app.classList.add('ready'); }, 5000);
     });
 
-    // Health ping
     async function pingHealth(){
       const badge = document.getElementById('health');
       try {
@@ -144,14 +144,46 @@
     pingHealth(); setInterval(pingHealth, 8000);
 
     const $ = (id) => document.getElementById(id);
-    const STATE = { schema: null, claims: [], transcript_path: "" };
+    const STATE = { schema: null, claims: [], transcript_path: "", video_path: "", video_meta: null };
 
     const esc = (s) => (s ?? '').toString().replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
     const setMsg = (t) => { $('artifactsMsg').textContent = t; };
     const setMsgHTML = (h) => { $('artifactsMsg').innerHTML = h; };
-    const postForm = async (url, fd) => { const r = await fetch(url, { method:'POST', body: fd }); if (!r.ok) throw new Error(await r.text()); return r.json(); };
+    const postForm = async (url, fd) => {
+      const r = await fetch(url, { method:'POST', body: fd });
+      if (!r.ok) {
+        let msg = '';
+        try { msg = (await r.json()).detail?.message || (await r.text()); } catch { msg = await r.text(); }
+        throw new Error(msg || 'Upload failed');
+      }
+      return r.json();
+    };
 
-    // Candidate discovery
+    function humanSizeMB(n){ return (Math.round(n*100)/100).toFixed(2) + ' MB'; }
+    function mmss(sec){ sec = Math.max(0, Math.round(sec||0)); const m = Math.floor(sec/60); const s = sec%60; return `${m}:${s.toString().padStart(2,'0')}`; }
+
+    function renderVideoBadge(vpath, meta){
+      if (!vpath || !meta) return '';
+      return `<span class="badge-mini" title="video ✓ ${mmss(meta.duration_sec)} · ${meta.codec} · ${humanSizeMB(meta.filesize_mb)}">
+        <video src="${vpath}"></video>
+        <span>video ✓ ${mmss(meta.duration_sec)} · ${meta.codec} · ${humanSizeMB(meta.filesize_mb)}</span>
+      </span>`;
+    }
+
+    function enforceButtons(latest){
+      const hasAudio = !!latest.transcript_chars && !latest.video_path;
+      const hasVideo = !!latest.video_path;
+
+      // Keep buttons enabled to allow replacement flow; communicate intent via titles
+      $('audioBtn').title = hasVideo
+        ? "Attach audio (will offer to replace existing video)"
+        : "Attach audio";
+
+      $('videoBtn').title = hasAudio
+        ? "Attach video (will offer to replace existing audio)"
+        : "Attach video";
+    }
+
     async function refreshCandidates(){
       try {
         const r = await fetch('/artifacts/candidates');
@@ -177,7 +209,6 @@
       if (v) $('cand').value = v;
     });
 
-    // Load artifacts
     $('loadBtn').addEventListener('click', async () => {
       const cand = ($('candSelect').value || $('cand').value || '').trim();
       if (!cand) { alert('Pick or type a candidate first.'); return; }
@@ -190,23 +221,28 @@
         const latest = data.latest || {};
         STATE.claims = Array.isArray(latest.claims) ? latest.claims : [];
         STATE.transcript_path = latest.transcript_path || "";
+        STATE.video_path = latest.video_path || "";
+        STATE.video_meta = latest.video_meta || null;
 
         const bits = [];
         bits.push(`Loaded candidate: ${cand}`);
         if (latest.resume_path) bits.push(`resume ✓`);
         if (latest.claims_count) bits.push(`claims: ${latest.claims_count}`);
         if (latest.transcript_chars) bits.push(`transcript: ${latest.transcript_chars} chars`);
+
+        const vbadge = renderVideoBadge(latest.video_path, latest.video_meta);
         const prev = esc(latest.transcript_preview || '');
-        setMsgHTML(bits.join(' · ') + (prev
+        const previewHTML = prev
           ? ` <details style="display:inline-block;margin-left:8px;">
                <summary style="cursor:pointer;color:#e8edf2;display:inline;">Transcript preview</summary>
                <pre style="white-space:pre-wrap;margin:.35rem 0 0;color:#a8b2bd;">${prev}</pre>
-             </details>`
-          : ''));
-      } catch { setMsg('Load failed'); }
+             </details>` : '';
+
+        setMsgHTML(bits.join(' · ') + (vbadge ? ' · ' + vbadge : '') + previewHTML);
+        enforceButtons(latest);
+      } catch (e) { setMsg('Load failed'); }
     });
 
-    // Compile JD → show schema
     $('compileBtn').addEventListener('click', async () => {
       const text = $('jd').value.trim();
       if (!text) { alert('Paste a JD first.'); return; }
@@ -249,7 +285,6 @@
       document.querySelector('#result').scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
 
-    // Clear
     $('clearBtn').addEventListener('click', () => {
       $('jd').value = '';
       $('live').checked = false;
@@ -259,28 +294,27 @@
       $('company').textContent = '';
       $('artifactsMsg').textContent = '';
       $('coverage').style.display = 'none';
-      STATE.schema = null; STATE.claims = []; STATE.transcript_path = "";
+      STATE.schema = null; STATE.claims = []; STATE.transcript_path = ""; STATE.video_path = ""; STATE.video_meta = null;
     });
 
-    // Uploads
     $('resumeBtn').addEventListener('click', () => $('resumeFile').click());
     $('audioBtn').addEventListener('click',  () => $('audioFile').click());
+    $('videoBtn').addEventListener('click',  () => $('videoFile').click());
 
     $('resumeFile').addEventListener('change', async () => {
       const f = $('resumeFile').files[0]; if (!f) return;
       const cand = ($('candSelect').value || $('cand').value || '').trim() || 'anon';
       const live = $('live').checked;
-      const qs = live ? '?dry=0' : '';
-
-      const fd = new FormData(); fd.append('candidate_id', cand); fd.append('file', f);
+      let qs = live ? '?dry=0' : '';
 
       setMsg('Uploading resume…');
       try {
+        const fd = new FormData(); fd.append('candidate_id', cand); fd.append('file', f);
         const res = await postForm('/artifacts/resume' + qs, fd);
         STATE.claims = Array.isArray(res.claims) ? res.claims : [];
         setMsg(`Resume ✓  claims: ${res.claims_count ?? '?'}  → ${res.path ?? ''}`);
         await refreshCandidates(); $('cand').value = cand; $('candSelect').value = cand;
-      } catch { setMsg('Resume upload failed'); }
+      } catch (e){ setMsg('Resume upload failed: ' + (e?.message||'')); }
       finally { $('resumeFile').value = ''; }
     });
 
@@ -288,13 +322,21 @@
       const f = $('audioFile').files[0]; if (!f) return;
       const cand = ($('candSelect').value || $('cand').value || '').trim() || 'anon';
       const live = $('live').checked;
-      const qs = live ? '?dry=0' : '';
+
+      const hasVideo = !!STATE.video_path;
+      let qs = live ? '?dry=0' : '';
+      if (hasVideo){
+        const ok = window.confirm('Replace existing video with this audio? This will remove the current video + transcript.');
+        if (!ok){ $('audioFile').value=''; return; }
+        qs += (qs ? '&' : '?') + 'replace=1';
+      }
 
       const fd = new FormData(); fd.append('candidate_id', cand); fd.append('file', f);
 
       setMsg('Transcribing…');
       try {
         const res = await postForm('/artifacts/audio' + qs, fd);
+        STATE.video_path = ""; STATE.video_meta = null; // replaced
         STATE.transcript_path = res.transcript_path || "";
         const chars = res.transcript_chars ?? '?';
         const prev  = esc(res.preview ?? '').trim();
@@ -302,15 +344,66 @@
           ? `Audio ✓ transcript: ${chars} chars <details style="display:inline-block;margin-left:8px;"><summary style="cursor:pointer;color:#e8edf2;display:inline;">Preview</summary><pre style="white-space:pre-wrap;margin:.35rem 0 0;color:#a8b2bd;">${prev}</pre></details>`
           : `Audio ✓ transcript: ${chars} chars`);
         await refreshCandidates(); $('cand').value = cand; $('candSelect').value = cand;
-      } catch { setMsg('Audio upload failed'); }
+        enforceButtons({ transcript_chars: chars, video_path: STATE.video_path });
+      } catch (e){ setMsg('Audio upload failed: ' + (e?.message||'')); }
       finally { $('audioFile').value = ''; }
     });
 
-    // Robust, non-nesting highlighter (build ranges first, then wrap once)
+    function checkVideoDuration(file){
+      return new Promise((resolve) => {
+        const url = URL.createObjectURL(file);
+        const v = document.createElement('video');
+        v.preload = 'metadata';
+        v.onloadedmetadata = () => { URL.revokeObjectURL(url); resolve(v.duration || 0); };
+        v.onerror = () => { URL.revokeObjectURL(url); resolve(0); };
+        v.src = url;
+      });
+    }
+
+    $('videoFile').addEventListener('change', async () => {
+      const f = $('videoFile').files[0]; if (!f) return;
+      const cand = ($('candSelect').value || $('cand').value || '').trim() || 'anon';
+      const live = $('live').checked;
+
+      // Client-side limits
+      const MB = f.size/(1024*1024);
+      if (MB > 150){ setMsg('Video too large (max 150 MB).'); $('videoFile').value=''; return; }
+      const dur = await checkVideoDuration(f);
+      if (dur && dur > 120 && live){ setMsg('Video too long (max 2 minutes).'); $('videoFile').value=''; return; }
+
+      // Determine if "audio exists" (transcript without a current video)
+      const hasAudio = (!!STATE.transcript_path && !STATE.video_path);
+
+      let qs = live ? '?dry=0' : '';
+      if (hasAudio){
+        const ok = window.confirm('Replace existing audio with this video? This will remove the current audio + transcript.');
+        if (!ok){ $('videoFile').value=''; return; }
+        qs += (qs ? '&' : '?') + 'replace=1';
+      }
+
+      const fd = new FormData(); fd.append('candidate_id', cand); fd.append('file', f);
+
+      setMsg('Processing video… (extracting audio → transcribing)');
+      try {
+        const res = await postForm('/artifacts/video' + qs, fd);
+        STATE.transcript_path = res.transcript_path || "";
+        STATE.video_path = res.video_path || "";
+        STATE.video_meta = { duration_sec: res.duration_sec, codec: res.codec, bitrate_kbps: res.bitrate_kbps, filesize_mb: res.filesize_mb, created_at: res.created_at };
+
+        const prev = esc(res.preview || '').trim();
+        const badge = renderVideoBadge(STATE.video_path, STATE.video_meta);
+        setMsgHTML(`${badge}${prev ? ' · ' : ''}${prev ? `<span class="muted-tip">${prev}</span>` : ''}`);
+
+        await refreshCandidates(); $('cand').value = cand; $('candSelect').value = cand;
+        enforceButtons({ transcript_chars: res.transcript_chars, video_path: STATE.video_path });
+      } catch (e){ setMsg('Video upload failed: ' + (e?.message||'')); }
+      finally { $('videoFile').value = ''; }
+    });
+
     function highlightTerms(snippetEscaped, terms){
       const text = snippetEscaped || '';
       const uniq = Array.from(new Set((terms || []).map(t => (t||'').toString()).filter(Boolean)));
-      uniq.sort((a,b) => (b.length||0)-(a.length||0)); // longest-first
+      uniq.sort((a,b) => (b.length||0)-(a.length||0));
       const lower = text.toLowerCase();
       const ranges = [];
 
@@ -325,7 +418,6 @@
           idx = at + Math.max(1, t.length);
         }
       }
-      // Merge overlaps
       ranges.sort((a,b)=>a[0]-b[0]);
       const merged = [];
       for (const r of ranges){
@@ -335,9 +427,7 @@
           merged[merged.length-1][1] = Math.max(merged[merged.length-1][1], r[1]);
         }
       }
-      // Build HTML
-      let out = '';
-      let prev = 0;
+      let out = ''; let prev = 0;
       for (const [s,e] of merged){
         out += text.slice(prev, s);
         out += '<span class="hit">' + text.slice(s,e) + '</span>';
@@ -347,7 +437,6 @@
       return out;
     }
 
-    // Build Evidence (LLM-backed; auto-fallback to lexicon on failure)
     $('evidenceBtn').addEventListener('click', async () => {
       if (!STATE.schema) { alert('Compile the JD first.'); return; }
       const cand = ($('candSelect').value || $('cand').value || '').trim() || 'anon';
@@ -362,7 +451,6 @@
         const data = await r.json();
         renderEvidence(data);
       } catch (e) {
-        // Confirm→fallback to lexicon (DRY)
         const ok = window.confirm('Live build failed or API unavailable. Use lexicon fallback instead?');
         if (!ok) { setMsg('Evidence build cancelled'); return; }
         try{
@@ -375,14 +463,12 @@
     });
 
     function renderEvidence(data){
-      // Coverage header
       $('coverage').style.display = 'flex';
       $('covOverall').textContent = `Overall: ${data.coverage?.overall ?? '?'}%`;
       const ct = $('covThemes'); ct.innerHTML = '';
       const by = data.coverage?.by_theme || {};
       Object.keys(by).forEach(name => { const pill = document.createElement('span'); pill.className = 'pill'; pill.textContent = `${name}: ${by[name]}%`; ct.appendChild(pill); });
 
-      // Theme render with receipts + open questions
       const grid = $('themes'); grid.innerHTML = '';
       const adapter = data.adapter || {};
       const themes = STATE.schema?.themes || [];

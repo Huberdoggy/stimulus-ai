@@ -28,6 +28,7 @@ STATIC_DIR = APP_DIR / "static"
 UPLOADS_DIR = STATIC_DIR / "uploads"
 RESUME_DIR = UPLOADS_DIR / "resumes"
 AUDIO_DIR = UPLOADS_DIR / "audio"
+VIDEO_DIR = UPLOADS_DIR / "video"  # NEW: allow transcripts saved next to video artifacts
 LEXICON_PATH = STATIC_DIR / "lexicon.json"
 
 # ---------- Env / model selection ----------
@@ -65,17 +66,18 @@ def _latest_claims_json(cand: str) -> Optional[Path]:
     return best
 
 def _latest_transcript_txt(cand: str) -> Optional[Path]:
-    base = AUDIO_DIR / cand
-    if not base.exists():
+    """
+    Find the newest transcript .txt under either audio/<cand> or video/<cand>.
+    """
+    candidates: List[Path] = []
+    for base in (AUDIO_DIR / cand, VIDEO_DIR / cand):
+        if base.exists():
+            for p in base.iterdir():
+                if p.is_file() and p.suffix == ".txt":
+                    candidates.append(p)
+    if not candidates:
         return None
-    best: Optional[Path] = None
-    best_mtime = -1.0
-    for p in base.iterdir():
-        if p.is_file() and p.suffix == ".txt":
-            m = p.stat().st_mtime
-            if m > best_mtime:
-                best, best_mtime = p, m
-    return best
+    return max(candidates, key=lambda p: p.stat().st_mtime)
 
 def _read_text(fp: Path) -> str:
     try:
@@ -108,22 +110,18 @@ _SENT_SPLIT = re.compile(
 )
 
 def _chunk_text(s: str, max_len: int = 280, min_len: int = 60) -> List[str]:
-    s = re.sub(r"\s+", " ", s).strip()
-    if not s:
-        return []
-    if len(s) <= max_len:
-        return [s]
+    words = re.findall(r"\S+\s*", s or "")
     out: List[str] = []
-    i = 0
-    n = len(s)
-    while i < n:
-        j = min(i + max_len, n)
-        cut = s.rfind(" ", i + min_len, j)
-        if cut == -1:
-            cut = j
-        out.append(s[i:cut].strip())
-        i = cut
-    return [t for t in out if len(t) >= min_len or t == out[-1]]
+    buf = ""
+    for w in words:
+        if len(buf) + len(w) > max_len and len(buf) >= min_len:
+            out.append(buf.strip())
+            buf = w
+        else:
+            buf += w
+    if buf.strip():
+        out.append(buf.strip())
+    return out
 
 def _sentences(text: str) -> List[str]:
     raw = [re.sub(r"\s+", " ", (seg or "").strip()) for seg in _SENT_SPLIT.split(text or "")]
@@ -147,14 +145,22 @@ def _sentences(text: str) -> List[str]:
     return dedup[:200]
 
 def _resolve_static_web_path(web_path: str) -> Optional[Path]:
+    """
+    Accepts /static/uploads/(audio|video)/... .txt and returns a filesystem Path,
+    restricted to the corresponding directory under app/static/uploads.
+    """
     if not web_path:
         return None
     rel = unquote(web_path).lstrip("/")
     if rel.startswith("app/"):
         rel = rel[4:]
     path = (APP_DIR / rel).resolve()
+
     audio_root = AUDIO_DIR.resolve()
-    if not str(path).startswith(str(audio_root)) or not path.exists():
+    video_root = VIDEO_DIR.resolve()
+    # Allow either audio or video transcript locations
+    allowed = (str(path).startswith(str(audio_root)) or str(path).startswith(str(video_root)))
+    if not allowed or not path.exists():
         return None
     return path
 
@@ -186,10 +192,7 @@ SYSTEM_PROMPT = (
     "• Prefer source diversity when two candidates are comparable.\n"
     "• If a requirement has TWO evidence items AND both resume and transcript claims exist, choose ONE from each source (resume+transcript) unless no transcript claim is reasonably relevant—in that case include 1 transcript-based open question.\n"
     "• Keep hit_terms minimal and meaningful: 1–8 items, each 1–40 chars, must appear verbatim in the claim text (case-insensitive allowed) and relate directly to the requirement.\n"
-    "• Limit evidence to 0–2 items per requirement.\n"
-    "• If you select 0 evidence items for a requirement, include at least 1 actionable open question for that requirement.\n"
-    "• Adapter keys MUST be the EXACT theme names from the provided schema.\n"
-    "• GLOBAL CONSTRAINT: If any transcript claims are present in the input, include at least one transcript-based evidence item somewhere in the output. If all transcript claims are weak, select the single most relevant transcript claim and include an open question explaining the gap.\n"
+    "• Limit evidence to 0–2 items per requirement. If all transcript claims are weak, select the single most relevant transcript claim and include an open question explaining the gap.\n"
     "• Output JSON ONLY. No extra keys, no markdown.\n\n"
     "Output JSON schema (theme keys must be actual names):\n"
     "{\n"
@@ -314,10 +317,8 @@ def _load_lexicon() -> Dict[str, Any]:
         }
     }
 
-_TOKEN = re.compile(r"[A-Za-z0-9\+\#\.\-']+")
-
 def _tokens(s: str) -> List[str]:
-    return [w.lower() for w in _TOKEN.findall(s or "")]
+    return [w.lower() for w in re.compile(r"[A-Za-z0-9\+\#\.\-']+").findall(s or "")]
 
 def _expand_aliases(tokens: List[str], lex: Dict[str, Any]) -> List[str]:
     aliases = lex.get("aliases", {})
