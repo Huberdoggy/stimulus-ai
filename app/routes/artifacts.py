@@ -14,6 +14,7 @@ from ..services.transcribe import transcribe_audio_bytes  # type: ignore[import]
 from ..services.media import (
     ALLOWED_VIDEO_EXT,
     probe_video,
+    probe_audio,
     extract_audio_wav,
     NoAudioStreamError,
     FFmpegUnavailableError,
@@ -106,6 +107,30 @@ def _latest_transcript_txt(cand: str) -> Optional[str]:
     paths.sort(key=os.path.getmtime)
     return paths[-1]
 
+def _latest_audio_meta(cand: str) -> tuple[Optional[str], Optional[Dict[str, Any]]]:
+    base = os.path.join(_AUDIO, cand)
+    if not os.path.isdir(base):
+        return None, None
+    metas = _list_files(base, lambda p: p.endswith(".meta.json"))
+    if not metas:
+        return None, None
+    meta_path = metas[-1]
+    try:
+        meta = json.loads(open(meta_path, "r", encoding="utf-8").read())
+    except Exception:
+        meta = None
+    aud_guess = meta_path[:-len(".meta.json")]
+    if not os.path.exists(aud_guess):
+        # If mismatched, try any audio next to it with same stamp prefix
+        stem = os.path.basename(aud_guess).split("__", 1)[0]
+        for fn in os.listdir(base):
+            if fn.startswith(stem + "__"):
+                aud_guess = os.path.join(base, fn)
+                break
+    if not os.path.exists(aud_guess):
+        aud_guess = None
+    return aud_guess, meta
+
 def _latest_video_meta(cand: str) -> tuple[Optional[str], Optional[Dict[str, Any]]]:
     base = os.path.join(_VIDEO, cand)
     if not os.path.isdir(base):
@@ -142,6 +167,9 @@ def load_latest_for_candidate(candidate_id: str) -> Dict[str, Any]:
     claims_json_path = _latest_claims_json(cand)
     transcript_txt_path = _latest_transcript_txt(cand)
     video_file_abs, video_meta = _latest_video_meta(cand)
+    audio_file_abs, audio_meta = _latest_audio_meta(cand)
+    audio_path_web = _web_path(audio_file_abs) if audio_file_abs else None
+    video_path_web = _web_path(video_file_abs) if video_file_abs else None
 
     claims: List[Dict[str, Any]] = []
     resume_path_web: Optional[str] = None
@@ -170,8 +198,6 @@ def load_latest_for_candidate(candidate_id: str) -> Dict[str, Any]:
         except Exception as e:
             raise HTTPException(500, f"Failed to read transcript: {e}")
 
-    video_path_web = _web_path(video_file_abs) if video_file_abs else None
-
     return {
         "candidate_id": cand,
         "latest": {
@@ -182,6 +208,8 @@ def load_latest_for_candidate(candidate_id: str) -> Dict[str, Any]:
             "transcript_path": transcript_web,
             "transcript_chars": transcript_chars,
             "transcript_preview": transcript_preview,
+            "audio_path": audio_path_web,
+            "audio_meta": audio_meta or None,
             "video_path": video_path_web,
             "video_meta": video_meta or None,
         },
@@ -215,18 +243,8 @@ async def upload_resume(
 
     if dry_override:
         claims = [
-            {
-                "id": "r0001",
-                "text": "Delivered role-relevant outcomes within stated timelines; collaborated cross-functionally.",
-                "source_ref": {"kind": "resume", "line": 1},
-                "tags": []
-            },
-            {
-                "id": "r0002",
-                "text": "Led initiatives end-to-end; documented process and measurable results.",
-                "source_ref": {"kind": "resume", "line": 2},
-                "tags": []
-            },
+            {"id": "r0001","text": "Delivered role-relevant outcomes within stated timelines; collaborated cross-functionally.","source_ref": {"kind": "resume", "line": 1},"tags": []},
+            {"id": "r0002","text": "Led initiatives end-to-end; documented process and measurable results.","source_ref": {"kind": "resume", "line": 2},"tags": []},
         ]
         text_len = 0
     else:
@@ -298,6 +316,34 @@ async def upload_audio(
     except Exception as e:
         raise HTTPException(400, f"Failed to save audio: {e}")
 
+    # audio meta probe
+    # Probe audio for badge meta (works in live & dry). Fallback to stub if ffprobe is unavailable.
+    try:
+        meta = probe_audio(abs_audio)
+    except FFmpegUnavailableError:
+        # Minimal stub when ffprobe is missing
+        filesize_mb = round(os.path.getsize(abs_audio) / (1024*1024), 2)
+        # deterministic pseudo between ~25–70s
+        h = sum(ord(c) for c in os.path.basename(abs_audio))
+        duration_sec = 25 + (h % 46)
+        meta = {
+            "duration_sec": int(duration_sec),
+            "codec": "stub",
+            "bitrate_kbps": 0,
+            "filesize_mb": filesize_mb,
+            "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        }
+    except FFmpegExecError as e:
+        # Non-fatal: still proceed with transcription
+        meta = None
+
+    if meta:
+        try:
+            with open(os.path.splitext(abs_audio)[0] + ".meta.json", "w", encoding="utf-8") as f:
+                json.dump(meta, f, ensure_ascii=False, indent=2)
+        except Exception:
+            pass
+
     dry_override: Optional[bool] = None if dry is None else bool(dry)
     try:
         transcript: str = transcribe_audio_bytes(filename=filename, data=data, dry_mode=dry_override)
@@ -323,7 +369,9 @@ async def upload_audio(
         "transcript_chars": len(transcript or ""),
         "preview": (transcript or "").strip()[:400],
         "dry_mode": dry_override,
+        "audio_meta": meta or None,
         "replaced": bool(replace),
+        **(meta or {}),
     })
 
 # ---------- Upload: video (persists video + extracted .wav + transcript .txt) ----------

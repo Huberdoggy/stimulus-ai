@@ -64,7 +64,7 @@ def probe_video(path: str) -> Dict:
 
     abit = int((aj[0].get("bit_rate") or 0) if aj else 0)
 
-    # bitrate heuristic: prefer container sum if we had it; else combine streams; else derive
+    # bitrate heuristic
     kbps = 0
     if vbit or abit:
         kbps = int(round((vbit + abit) / 1000)) if (vbit or abit) else 0
@@ -74,6 +74,47 @@ def probe_video(path: str) -> Dict:
     return {
         "duration_sec": int(round(dur)),
         "codec": vcodec,
+        "bitrate_kbps": kbps,
+        "filesize_mb": mb,
+        "created_at": __import__("time").strftime("%Y-%m-%dT%H:%M:%SZ", __import__("time").gmtime()),
+    }
+
+def probe_audio(path: str) -> Dict:
+    """
+    Lightweight audio probe using ffprobe.
+    Returns {duration_sec, codec, bitrate_kbps, filesize_mb, created_at}
+    Raises NoAudioStreamError if no decodable audio stream exists.
+    """
+    _need("ffprobe")
+    if not os.path.exists(path):
+        raise FileNotFoundError(path)
+
+    # container duration + size
+    fmt = _run([
+        "ffprobe", "-v", "error", "-show_entries", "format=duration,size",
+        "-of", "json", path
+    ])
+    fmt_j = json.loads(fmt or "{}").get("format", {}) if fmt else {}
+    dur = float(fmt_j.get("duration") or 0.0)
+    size_bytes = int(fmt_j.get("size") or 0)
+    mb = round(size_bytes / (1024*1024), 2)
+
+    # audio stream info
+    a = _run([
+        "ffprobe", "-v", "error", "-select_streams", "a:0",
+        "-show_entries", "stream=codec_name,bit_rate",
+        "-of", "json", path
+    ])
+    aj = json.loads(a or "{}").get("streams", []) if a else []
+    if not aj:
+        raise NoAudioStreamError("No audio stream")
+    acodec = (aj[0].get("codec_name") if aj else None) or "unknown"
+    abit = int((aj[0].get("bit_rate") or 0) if aj else 0)
+    kbps = int(round(abit / 1000)) if abit else (int(round((size_bytes*8)/1000/dur)) if (size_bytes and dur) else 0)
+
+    return {
+        "duration_sec": int(round(dur)),
+        "codec": acodec,
         "bitrate_kbps": kbps,
         "filesize_mb": mb,
         "created_at": __import__("time").strftime("%Y-%m-%dT%H:%M:%SZ", __import__("time").gmtime()),
