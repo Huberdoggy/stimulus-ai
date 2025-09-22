@@ -20,6 +20,7 @@
   --shadow-soft:   0 18px 40px rgba(0,0,0,.55);
   --shadow-lift:   0 24px 48px rgba(0,0,0,.6);
   --shadow-neon:   0 0 24px rgba(41,211,255,.18), 0 0 36px rgba(255,62,158,.12);
+  --list-indent:   1.25rem; /* P1 nested-bullets fix */
 }
 
 * { box-sizing: border-box; }
@@ -124,7 +125,6 @@ body{
     dotBounceStrong 2800ms cubic-bezier(.2,.8,.2,1) 320ms 1 both,
     dotFloat 2600ms ease-in-out 3120ms infinite;
 }
-/* bounce then gentle float (intentional) */
 @keyframes dotBounceStrong{
   0%   { opacity: 0; transform: translate3d(0,-22px,0) scale(.7); }
   12%  { opacity: 1; transform: translate3d(0,0,0)      scale(1.00); }
@@ -136,7 +136,6 @@ body{
   87%  {            transform: translate3d(0,0,0)       scale(1.00); }
   100% { opacity: 1; transform: translate3d(0,0,0)      scale(1.00); }
 }
-
 @keyframes dotFloat{ 0%,100%{ transform:translateY(0) } 50%{ transform:translateY(-3px) } }
 
 .tagline{ grid-column: 1 / -1; margin: 6px 0 0; color: var(--muted); }
@@ -156,24 +155,6 @@ body{
 .badge.ok .dot{ background: var(--aurora-4); animation: dotPulse 2600ms ease-in-out infinite; }
 @keyframes okPulse{ 0%,100%{ box-shadow:0 0 0 2px var(--ring),0 0 16px var(--ring)} 50%{ box-shadow:0 0 0 6px var(--ring),0 0 28px var(--ring)} }
 @keyframes dotPulse{ 0%,100%{ transform:scale(1) } 50%{ transform:scale(1.12) } }
-
-/* ---------- Toggle ---------- */
-.toggle{ display:inline-flex; align-items:center; gap:8px; }
-.toggle input{ position:absolute; opacity:0; pointer-events:none; }
-.toggle__track{
-  width:46px; height:26px; border-radius:999px; display:inline-block;
-  background:#111722; border:1px solid rgba(255,255,255,.14);
-  position:relative; transition: all .2s ease; box-shadow: inset 0 0 0 1px transparent;
-}
-.toggle__track::after{
-  content:""; position:absolute; top:3px; left:3px; width:20px; height:20px; border-radius:50%;
-  background: linear-gradient(135deg, #1f2937, #0f1623);
-  box-shadow: 0 2px 10px rgba(0,0,0,.35);
-  transition: transform .22s ease, background .22s ease;
-}
-.toggle input:checked + .toggle__track{ border-color: var(--ring-strong); box-shadow: 0 0 0 3px var(--ring); background: linear-gradient(135deg, rgba(41,211,255,.20), rgba(124,108,246,.20)); }
-.toggle input:checked + .toggle__track::after{ transform: translateX(20px); background: linear-gradient(135deg, var(--aurora-2), var(--aurora-4)); }
-.toggle__label{ color: var(--muted); font-size: .92rem; }
 
 /* =================== MAIN + CARD =================== */
 .main{ padding-top: 10px; }
@@ -224,7 +205,6 @@ textarea:focus{ border-color: var(--ring-strong); box-shadow: 0 0 0 3px var(--ri
 .btn-circle:hover{ transform: translateY(-1px); }
 .btn-compile:hover{ background: linear-gradient(135deg, rgba(52,211,153,.95), rgba(41,211,255,.95)); box-shadow: 0 0 0 4px rgba(52,211,153,.18), var(--shadow-neon); color:#001014; }
 .btn-clear:hover{   background: linear-gradient(135deg, rgba(255,62,158,.95), rgba(252,92,125,.95)); box-shadow: 0 0 0 4px rgba(255,62,158,.18), var(--shadow-neon); color:#100005; }
-
 
 /* unified controls extras */
 .controls__divider{
@@ -288,7 +268,7 @@ textarea:focus{ border-color: var(--ring-strong); box-shadow: 0 0 0 3px var(--ri
 .theme ul{ margin:.1rem 0 .6rem 1.1rem; color:var(--muted); }
 .theme li{ margin:.18rem 0; }
 
-/* Matched token inside a receipt snippet (color-only; fits the palette) */
+/* Matched token inside a receipt snippet */
 .hit { color: #29d3ff; }
 
 /* a11y */
@@ -303,4 +283,58 @@ textarea:focus{ border-color: var(--ring-strong); box-shadow: 0 0 0 3px var(--ri
   .intro__img{ animation:none !important; }
   .app.ready .hero::before, .app.ready .hero::after, .theme{ animation:none !important; }
   .app.ready .logo__dot{ animation:none !important; opacity:1 !important; }
+}
+
+/* =================== P1 additions from adapter_card (migrated) =================== */
+
+/* Coverage, pills, receipts, utility */
+.coverage{ margin-top:12px; display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+.coverage__overall{ font-weight:700; padding:.28rem .6rem; border-radius:999px; background:rgba(52,211,153,.14); border:1px solid rgba(52,211,153,.35); box-shadow:0 0 0 2px rgba(52,211,153,.12); }
+.pill{ padding:.2rem .5rem; border-radius:999px; border:1px solid rgba(255,255,255,.12); background: rgba(255,255,255,.04); font-size:.9rem; }
+details.receipt{ margin:.18rem 0 .35rem 1.1rem; }
+details.receipt > ul{ max-height:220px; overflow:auto; padding-right:6px; }
+.receipt__snippet{ word-break: break-word; }
+.muted{ color:#a8b2bd; }
+.muted-tip{ opacity:.8 }
+
+/* Row/select/note/badge-mini */
+.row{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.select{ height:38px; padding:0 10px; border-radius:999px; border:1px solid rgba(255,255,255,.12); background:#0d141d; color:#e8edf2; outline:none; }
+.select:focus{ box-shadow:0 0 0 3px rgba(41,211,255,.22); }
+.note{ font-size:.92rem; color:#a8b2bd; }
+.badge-mini{ display:inline-flex; align-items:center; gap:6px; padding:.2rem .5rem; border-radius:999px; border:1px solid rgba(255,255,255,.12); background:rgba(255,255,255,.04); }
+.badge-mini video{ width:38px; height:22px; object-fit:cover; border-radius:6px; display:inline-block; }
+
+/* Processing overlay (API dead-air) */
+.processing-overlay{
+  position: fixed;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: rgba(6, 10, 15, 0.72);
+  backdrop-filter: blur(2px);
+  z-index: 9999;
+}
+.processing-box{ display:flex; flex-direction:column; align-items:center; gap:12px; }
+.processing-box img{ width:280px; height:auto; image-rendering:auto; }
+.processing-label{ color:#e8edf2; font-weight:600; letter-spacing:.3px; opacity:.9; }
+
+/* =================== P1 nested-bullets alignment (HIGHER SPECIFICITY & FINAL) =================== */
+/* Normalize list bullets & gutters across requirements, OQs, and receipts */
+.theme .reqs,
+.theme .open-qs ul,
+.theme details.receipt > ul{
+  list-style-position: outside;
+  padding-left: 1.25rem;
+  margin: .35rem 0 .5rem 1.25rem;
+}
+.theme .reqs{ list-style-type: disc; }
+.theme .open-qs ul,
+.theme details.receipt > ul{ list-style-type: circle; }
+
+.theme .reqs > li,
+.theme .open-qs ul > li,
+.theme details.receipt > ul > li{
+  margin-left: 0;
 }

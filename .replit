@@ -18,7 +18,7 @@ run = "python -m uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"
 
 [nix]
 channel = "stable-25_05"
-packages = ["cacert", "ffmpeg_6", "glibcLocales", "jq", "libxcrypt", "xcodebuild", "zlib"]
+packages = ["cacert", "ffmpeg_6", "glibcLocales", "jq", "libxcrypt", "xcodebuild", "zip", "zlib"]
 
 ######################################################################################################
 
