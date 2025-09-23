@@ -249,10 +249,9 @@ $('resumeFile').addEventListener('change', async () => {
   try {
     const res = await gateWithSpinner(postForm('/artifacts/resume' + qs, fd), 'Upload');
     STATE.resume_path = res.path || "";
-    const vbadge = renderVideoBadge(STATE.video_path, STATE.video_meta);
-    const abadge = renderAudioBadge(STATE.audio_meta);
-    const rbadge = renderResumeBadge(STATE.resume_path);
-    setMsgHTML(`${rbadge}${STATE.audio_meta ? ' · '+abadge : ''}${STATE.video_meta ? ' · '+vbadge : ''}`);
+
+    // NEW: rehydrate from server to ensure pills/preview match what "Load" shows
+    await rehydrateLatest(cand);
   } catch (e){ setMsg('Resume upload failed'); }
   finally { $('resumeFile').value = ''; }
 });
@@ -263,6 +262,42 @@ const fetchLatestFor = async (cand) => {
   if (!r.ok) return null;
   return r.json();
 };
+
+// NEW: full rehydrate helper (mirrors Load button behavior)
+async function rehydrateLatest(cand){
+  try{
+    const r = await fetch(`/artifacts/for/${encodeURIComponent(cand)}`);
+    if (!r.ok) return;
+
+    const data = await r.json();
+    const latest = data.latest || {};
+
+    STATE.resume_path    = latest.resume_path || "";
+    STATE.transcript_path= latest.transcript_path || "";
+    STATE.audio_meta     = latest.audio_meta || null;
+    STATE.video_path     = latest.video_path || "";
+    STATE.video_meta     = latest.video_meta || null;
+
+    const vbadge = renderVideoBadge(STATE.video_path, STATE.video_meta);
+    const abadge = renderAudioBadge(STATE.audio_meta);
+    const rbadge = renderResumeBadge(STATE.resume_path);
+
+    const prev = esc(latest.transcript_preview || '');
+    const previewHTML = prev
+      ? ` <details style="display:inline-block;margin-left:8px;">
+           <summary style="cursor:pointer;color:#e8edf2;display:inline;">Transcript preview</summary>
+           <pre style="white-space:pre-wrap;margin:.35rem 0 0;color:#a8b2bd;">${prev}</pre>
+         </details>` : '';
+
+    const bits = [];
+    if (STATE.resume_path) bits.push(rbadge);
+    if (STATE.audio_meta) bits.push(abadge);
+    if (STATE.video_meta) bits.push(vbadge);
+
+    setMsgHTML(bits.join(' · ') + previewHTML);
+    enforceButtons(latest);
+  } catch {}
+}
 
 // Attach audio (with replace flow + success alert)
 $('audioBtn').addEventListener('click', () => $('audioFile').click());
@@ -283,19 +318,21 @@ $('audioFile').addEventListener('change', async () => {
   setMsg('Transcribing…');
   try {
     const res = await gateWithSpinner(postForm('/artifacts/audio' + qs, fd), 'Transcribe');
+
+    // Preserve resume pill if present server-side
     try {
       const latest = await fetchLatestFor(cand);
       if (latest?.latest) {
         STATE.resume_path = latest.latest.resume_path || STATE.resume_path;
       }
     } catch {}
+
     STATE.video_path = ""; STATE.video_meta = null; // replaced by audio
     STATE.transcript_path = res.transcript_path || "";
     STATE.audio_meta = res.audio_meta || null;
 
-    const vbadge = renderVideoBadge(STATE.video_path, STATE.video_meta);
-    const rbadge = renderResumeBadge(STATE.resume_path);
-    setMsgHTML(`${rbadge ? rbadge + ' · ' : ''}${renderAudioBadge(STATE.audio_meta)}${res.preview ? ` · <span class="muted-tip">${esc(res.preview)}</span>` : ''}`);
+    // NEW: rehydrate from server to ensure final preview/badges reflect post-processing
+    await rehydrateLatest(cand);
 
     await refreshCandidates(); $('cand').value = cand; $('candSelect').value = cand;
     enforceButtons({ transcript_chars: res.transcript_chars, video_path: STATE.video_path, audio_meta: STATE.audio_meta });
@@ -327,21 +364,22 @@ $('videoFile').addEventListener('change', async () => {
   setMsg('Processing video… (extracting audio → transcribing)');
   try {
     const res = await gateWithSpinner(postForm('/artifacts/video' + qs, fd), 'FFmpeg · Whisper');
+
+    // Preserve resume pill if present server-side
     try {
       const latest = await fetchLatestFor(cand);
       if (latest?.latest) {
         STATE.resume_path = latest.latest.resume_path || STATE.resume_path;
       }
     } catch {}
+
     STATE.transcript_path = res.transcript_path || "";
     STATE.audio_meta = null;
     STATE.video_path = res.video_path || "";
     STATE.video_meta = res.video_meta || null;
 
-    const prev = esc(res.preview || '').trim();
-    const vbadge = renderVideoBadge(STATE.video_path, STATE.video_meta);
-    const rbadge = renderResumeBadge(STATE.resume_path);
-    setMsgHTML(`${rbadge ? rbadge + ' · ' : ''}${vbadge}${prev ? ` · <span class="muted-tip">${prev}</span>` : ''}`);
+    // NEW: rehydrate to pull final meta + transcript preview (same as pressing Load)
+    await rehydrateLatest(cand);
 
     await refreshCandidates(); $('cand').value = cand; $('candSelect').value = cand;
     enforceButtons({ transcript_chars: res.transcript_chars, video_path: STATE.video_path, audio_meta: STATE.audio_meta });

@@ -4,6 +4,9 @@
 .cache
 .pythonlibs
 
+# Ignore Kyle's zipped project file archives
+*.zip
+
 # Ignore candidate supplied artifacts
 **/uploads/
 
