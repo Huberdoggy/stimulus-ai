@@ -10,7 +10,7 @@ from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import JSONResponse
 
 from ..services.ingest import extract_text_from_bytes, normalize_resume_text
-from ..services.transcribe import transcribe_audio_bytes  # type: ignore[import]
+from ..services.transcribe import transcribe_audio_bytes
 from ..services.media import (
     ALLOWED_VIDEO_EXT,
     probe_video,
@@ -94,7 +94,6 @@ def _latest_claims_json(cand: str) -> Optional[str]:
     return _latest_with_suffix(os.path.join(_RESUMES, cand), ".claims.json")
 
 def _latest_transcript_txt(cand: str) -> Optional[str]:
-    # Search BOTH audio and video dirs; prefer newest
     paths = []
     a = _latest_with_suffix(os.path.join(_AUDIO, cand), ".txt")
     v = _latest_with_suffix(os.path.join(_VIDEO, cand), ".txt")
@@ -121,7 +120,6 @@ def _latest_audio_meta(cand: str) -> tuple[Optional[str], Optional[Dict[str, Any
         meta = None
     aud_guess = meta_path[:-len(".meta.json")]
     if not os.path.exists(aud_guess):
-        # If mismatched, try any audio next to it with same stamp prefix
         stem = os.path.basename(aud_guess).split("__", 1)[0]
         for fn in os.listdir(base):
             if fn.startswith(stem + "__"):
@@ -162,19 +160,24 @@ def list_candidates() -> Dict[str, Any]:
 
 @router.get("/for/{candidate_id}")
 def load_latest_for_candidate(candidate_id: str) -> Dict[str, Any]:
+    """
+    Restored original response shape so the UI preview renders:
+    { "candidate_id": "...", "latest": { ... preview fields ... }, "ok": true }
+    """
     cand = _safe_cand(candidate_id)
 
     claims_json_path = _latest_claims_json(cand)
     transcript_txt_path = _latest_transcript_txt(cand)
     video_file_abs, video_meta = _latest_video_meta(cand)
     audio_file_abs, audio_meta = _latest_audio_meta(cand)
+
     audio_path_web = _web_path(audio_file_abs) if audio_file_abs else None
     video_path_web = _web_path(video_file_abs) if video_file_abs else None
 
+    # Claims + resume web paths
     claims: List[Dict[str, Any]] = []
     resume_path_web: Optional[str] = None
     claims_json_web: Optional[str] = None
-
     if claims_json_path and os.path.exists(claims_json_path):
         try:
             with open(claims_json_path, "r", encoding="utf-8") as f:
@@ -186,13 +189,14 @@ def load_latest_for_candidate(candidate_id: str) -> Dict[str, Any]:
         except Exception as e:
             raise HTTPException(500, f"Failed to load claims.json: {e}")
 
+    # Transcript preview + path
     transcript_preview = ""
     transcript_chars = 0
     transcript_web: Optional[str] = None
     if transcript_txt_path and os.path.exists(transcript_txt_path):
         try:
             t = open(transcript_txt_path, "r", encoding="utf-8", errors="ignore").read()
-            transcript_chars = len(t)
+            transcript_chars = len(t or "")
             transcript_preview = (t.strip()[:400] or "")
             transcript_web = _web_path(transcript_txt_path)
         except Exception as e:
@@ -216,12 +220,11 @@ def load_latest_for_candidate(candidate_id: str) -> Dict[str, Any]:
         "ok": True
     }
 
-# ---------- Upload: resume (persists claims.json) ----------
+# ---------- Upload: resume (persists raw file + .claims.json) ----------
 @router.post("/resume")
 async def upload_resume(
     candidate_id: str = Form(...),
     file: UploadFile = File(...),
-    dry: Optional[int] = Query(default=1, ge=0, le=1),
 ) -> JSONResponse:
     cand = _safe_cand(candidate_id)
     dest_dir = os.path.join(_RESUMES, cand)
@@ -239,21 +242,13 @@ async def upload_resume(
     except Exception as e:
         raise HTTPException(400, f"Failed to save resume: {e}")
 
-    dry_override: Optional[bool] = None if dry is None else bool(dry)
-
-    if dry_override:
-        claims = [
-            {"id": "r0001","text": "Delivered role-relevant outcomes within stated timelines; collaborated cross-functionally.","source_ref": {"kind": "resume", "line": 1},"tags": []},
-            {"id": "r0002","text": "Led initiatives end-to-end; documented process and measurable results.","source_ref": {"kind": "resume", "line": 2},"tags": []},
-        ]
-        text_len = 0
-    else:
-        try:
-            text = extract_text_from_bytes(filename, data)
-        except Exception as e:
-            raise HTTPException(status_code=400, detail=f"Failed to extract text: {e}")
-        claims = normalize_resume_text(text)
-        text_len = len(text)
+    # Extract normalized claims
+    try:
+        text = extract_text_from_bytes(filename, data)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Failed to extract text: {e}")
+    claims = normalize_resume_text(text)
+    text_len = len(text or "")
 
     claims_json_path = abs_path + ".claims.json"
     try:
@@ -269,7 +264,6 @@ async def upload_resume(
         "claims_count": len(claims),
         "claims": claims,
         "claims_json_path": _web_path(claims_json_path),
-        "dry_mode": dry_override,
     })
 
 # ---------- Mutual-exclusion helpers ----------
@@ -286,7 +280,6 @@ def _has_any_video(cand: str) -> bool:
 async def upload_audio(
     candidate_id: str = Form(...),
     file: UploadFile = File(...),
-    dry: Optional[int] = Query(default=1, ge=0, le=1),
     replace: Optional[int] = Query(default=0, ge=0, le=1),
 ) -> JSONResponse:
     cand = _safe_cand(candidate_id)
@@ -298,7 +291,7 @@ async def upload_audio(
         else:
             raise HTTPException(
                 status_code=409,
-                detail={"reason": "conflict", "other_type": "video", "action": "remove or replace", "message": "One spoken-word artifact per candidate (audio OR video)."}
+                detail={"reason": "conflict", "other_type": "video", "message": "One spoken-word artifact per candidate (audio OR video)."}
             )
 
     dest_dir = os.path.join(_AUDIO, cand)
@@ -316,14 +309,11 @@ async def upload_audio(
     except Exception as e:
         raise HTTPException(400, f"Failed to save audio: {e}")
 
-    # audio meta probe
-    # Probe audio for badge meta (works in live & dry). Fallback to stub if ffprobe is unavailable.
+    # Probe audio meta (badge info). Fallback to stub if ffprobe is unavailable.
     try:
         meta = probe_audio(abs_audio)
     except FFmpegUnavailableError:
-        # Minimal stub when ffprobe is missing
         filesize_mb = round(os.path.getsize(abs_audio) / (1024*1024), 2)
-        # deterministic pseudo between ~25–70s
         h = sum(ord(c) for c in os.path.basename(abs_audio))
         duration_sec = 25 + (h % 46)
         meta = {
@@ -333,8 +323,7 @@ async def upload_audio(
             "filesize_mb": filesize_mb,
             "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         }
-    except FFmpegExecError as e:
-        # Non-fatal: still proceed with transcription
+    except FFmpegExecError:
         meta = None
 
     if meta:
@@ -344,14 +333,11 @@ async def upload_audio(
         except Exception:
             pass
 
-    dry_override: Optional[bool] = None if dry is None else bool(dry)
+    # Live-only transcription
     try:
-        transcript: str = transcribe_audio_bytes(filename=filename, data=data, dry_mode=dry_override)
+        transcript: str = transcribe_audio_bytes(filename=filename, data=data)
     except TypeError:
-        try:
-            transcript = transcribe_audio_bytes(filename, data)  # legacy signature
-        except Exception as e2:
-            raise HTTPException(500, f"Transcription failed: {e2}")
+        transcript = transcribe_audio_bytes(filename, data)
     except Exception as e:
         raise HTTPException(500, f"Transcription failed: {e}")
 
@@ -368,10 +354,8 @@ async def upload_audio(
         "transcript_path": _web_path(txt_path),
         "transcript_chars": len(transcript or ""),
         "preview": (transcript or "").strip()[:400],
-        "dry_mode": dry_override,
         "audio_meta": meta or None,
         "replaced": bool(replace),
-        **(meta or {}),
     })
 
 # ---------- Upload: video (persists video + extracted .wav + transcript .txt) ----------
@@ -379,18 +363,10 @@ _MAX_MB = 150
 _MAX_BYTES = _MAX_MB * 1024 * 1024
 _MAX_DURATION_SEC = 120
 
-def _pseudo_duration(filename: str, size_bytes: int) -> int:
-    h = sum(ord(c) for c in (filename or "v"))
-    base = 38 + (h % 58)
-    if size_bytes > 0:
-        base += min(12, (size_bytes // (5*1024*1024)))
-    return int(min(_MAX_DURATION_SEC, max(20, base)))
-
 @router.post("/video")
 async def upload_video(
     candidate_id: str = Form(...),
     file: UploadFile = File(...),
-    dry: Optional[int] = Query(default=1, ge=0, le=1),
     replace: Optional[int] = Query(default=0, ge=0, le=1),
 ) -> JSONResponse:
     cand = _safe_cand(candidate_id)
@@ -402,7 +378,7 @@ async def upload_video(
         else:
             raise HTTPException(
                 status_code=409,
-                detail={"reason": "conflict", "other_type": "audio", "action": "remove or replace", "message": "One spoken-word artifact per candidate (audio OR video)."}
+                detail={"reason": "conflict", "other_type": "audio", "message": "One spoken-word artifact per candidate (audio OR video)."}
             )
 
     orig_name = os.path.basename(file.filename or "video")
@@ -428,37 +404,7 @@ async def upload_video(
     except Exception as e:
         raise HTTPException(400, f"Failed to save video: {e}")
 
-    dry_override: Optional[bool] = None if dry is None else bool(dry)
-
-    if dry_override:
-        filesize_mb = round(len(blob) / (1024*1024), 2)
-        duration_sec = _pseudo_duration(vid_filename, len(blob))
-        meta = {
-            "duration_sec": duration_sec,
-            "codec": "stub",
-            "bitrate_kbps": 0,
-            "filesize_mb": filesize_mb,
-            "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        }
-        wav_abs = os.path.splitext(abs_video)[0] + ".wav"
-        txt_abs = os.path.splitext(abs_video)[0] + ".txt"
-        transcript = "Stub transcript from video: " + safe_name + " …"
-        with open(os.path.splitext(abs_video)[0] + ".meta.json", "w", encoding="utf-8") as f:
-            json.dump(meta, f, ensure_ascii=False, indent=2)
-        with open(txt_abs, "w", encoding="utf-8") as f:
-            f.write(transcript)
-        return JSONResponse({
-            "ok": True,
-            "dry_mode": True,
-            "video_path": _web_path(abs_video),
-            "audio_path": _web_path(wav_abs),
-            "transcript_path": _web_path(txt_abs),
-            "transcript_chars": len(transcript),
-            "preview": transcript[:400],
-            **meta,
-            "replaced": bool(replace),
-        })
-
+    # Probe video
     try:
         meta = probe_video(abs_video)
     except FFmpegUnavailableError as e:
@@ -478,10 +424,27 @@ async def upload_video(
         extract_audio_wav(abs_video, wav_abs)
     except FFmpegExecError as e:
         raise HTTPException(502, f"ffmpeg extract failed. Tip: try MP4/H.264/AAC. Details: {e}")
+    except Exception as e:
+        raise HTTPException(502, f"Audio extraction failed: {e}")
+
+    # Save video meta sidecar
+    try:
+        with open(os.path.splitext(abs_video)[0] + ".meta.json", "w", encoding="utf-8") as f:
+            json.dump(meta, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
+
+    # Transcribe from WAV
+    try:
+        with open(wav_abs, "rb") as f:
+            wav_bytes = f.read()
+    except Exception as e:
+        raise HTTPException(500, f"Failed to read extracted audio: {e}")
 
     try:
-        wav_bytes = open(wav_abs, "rb").read()
-        transcript: str = transcribe_audio_bytes(filename=os.path.basename(wav_abs), data=wav_bytes, dry_mode=False)
+        transcript = transcribe_audio_bytes(filename=os.path.basename(wav_abs), data=wav_bytes)
+    except TypeError:
+        transcript = transcribe_audio_bytes(os.path.basename(wav_abs), wav_bytes)
     except Exception as e:
         raise HTTPException(500, f"Transcription failed: {e}")
 
@@ -492,15 +455,8 @@ async def upload_video(
     except Exception as e:
         raise HTTPException(500, f"Failed to write transcript: {e}")
 
-    try:
-        with open(os.path.splitext(abs_video)[0] + ".meta.json", "w", encoding="utf-8") as f:
-            json.dump(meta, f, ensure_ascii=False, indent=2)
-    except Exception:
-        pass
-
     return JSONResponse({
         "ok": True,
-        "dry_mode": False,
         "video_path": _web_path(abs_video),
         "audio_path": _web_path(wav_abs),
         "transcript_path": _web_path(txt_abs),

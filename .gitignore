@@ -6,9 +6,16 @@
 
 # Ignore Kyle's zipped project file archives
 *.zip
+repo_tree.txt
 
-# Ignore candidate supplied artifacts
+# Ignore candidate supplied artifacts and cache. 'Lazy creates' in code mkdir as needed
 **/uploads/
+**/cache/
+
+# Bootstrap scripts and configs
+kyle_run_this_first.sh
+.codex/
+.npm-global/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

@@ -1,5 +1,4 @@
 from fastapi import APIRouter
-from fastapi import Query
 from pydantic import BaseModel
 from ..services.llm import compile_60s_jd
 
@@ -9,8 +8,10 @@ class JDIn(BaseModel):
     text: str
 
 @router.post("/60s")
-def sixty_seconds_jd(payload: JDIn, dry: int | None = Query(None, description="1=stub, 0=live")):
-    # dry=None → use global default; 1 → force stub; 0 → force live
-    force = None if dry is None else bool(dry)
-    schema = compile_60s_jd(payload.text, dry_mode=force)
+def sixty_seconds_jd(payload: JDIn):
+    """
+    Compile a Job Description (JD) into the 60-second schema.
+    P1.5: Live-only; no DRY mode flags or branches.
+    """
+    schema = compile_60s_jd(payload.text)
     return {"schema": schema}
