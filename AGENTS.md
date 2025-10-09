@@ -28,8 +28,10 @@ Stimulus doesn’t just show that a candidate can talk about a skill — it show
 - Consult documentation under ***milestones/*** at the start of each new session. This directory will contain specific action items requiring your attention.
 
 #### Concerning files that live outside of app/
+
 | Okay to touch | No touch zones |
-| --- | | --- |
+| --- | --- |
 | [README](https://replit.com/@KJHuber/StimulusAI#README.md) -> ensure this stays up to date (for internal personnel only). | [My bootstrap npm script](https://replit.com/@KJHuber/StimulusAI#kyle_run_this_first.sh) |
 | [requirements.txt](https://replit.com/@KJHuber/StimulusAI#requirements.txt) and [.replit](https://replit.com/@KJHuber/StimulusAI#.replit) -> as needed. | Anything else not explicitly mentioned as being 'okay'. |
+
 - Python files should be formatted in accordance with Black conventions -> including but not limited to: line lengths, whitespace, quotes, imports.
