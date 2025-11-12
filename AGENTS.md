@@ -31,7 +31,7 @@ Stimulus doesn’t just show that a candidate can talk about a skill — it show
 
 | Okay to touch | No touch zones |
 | --- | --- |
-| [README](./README.md) -> ensure this stays up to date (for internal personnel only). | **`.env`** ***(example template is okay).*** |
+| [README](./README.md) -> ensure this stays up to date (for internal personnel only). | **`.env`** ***( [example template is permissible](./.env.example) )*** |
 | [requirements.txt](./requirements.txt) as needed. | Anything not explicitly mentioned as being 'okay'. |
 
 - Python files should be formatted in accordance with Black conventions; use commandline arguments specified in ***`.vscode/settings.json`***.
