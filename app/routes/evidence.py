@@ -26,6 +26,7 @@ VIDEO_DIR = UPLOADS_DIR / "video"
 CACHE_ROOT = STATIC_DIR / "cache"
 EVIDENCE_DIR = CACHE_ROOT / "evidence"
 
+
 # ---------------- Env / model selection ----------------
 def truthy(name: str, default: str = "1") -> bool:
     v = os.getenv(name, default)
@@ -33,6 +34,7 @@ def truthy(name: str, default: str = "1") -> bool:
         return False
     v = v.strip().strip('"').strip("'").lower()
     return v in {"1", "true", "yes", "on", "y"}
+
 
 MODEL_LIVE = os.getenv("LLM_MODEL_LIVE", "gpt-4o-mini")
 LLM_SEED = int(os.getenv("LLM_SEED", "42"))
@@ -46,11 +48,14 @@ EVIDENCE_PROMPT_V = os.getenv("EVIDENCE_PROMPT_V", "p1.5-evidence-2025-10-05")
 _PURGE_MIN_INTERVAL_S = 600
 _last_purge_ts = 0.0
 
+
 def ensure_cache_dirs() -> None:
     EVIDENCE_DIR.mkdir(parents=True, exist_ok=True)
 
+
 def _now() -> float:
     return time.time()
+
 
 def _atomic_write_json(path: Path, obj: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)  # NEW: ensure nested dirs exist
@@ -70,10 +75,13 @@ def _is_expired(path: Path, ttl_seconds: int, now: Optional[float] = None) -> bo
         return True
     return age > ttl_seconds
 
-def purge_cache(ttl_seconds: int = EVID_TTL_SECONDS,
-                scan_limit: int = 50,
-                max_runtime_ms: int = 25,
-                min_interval_s: int = _PURGE_MIN_INTERVAL_S) -> int:
+
+def purge_cache(
+    ttl_seconds: int = EVID_TTL_SECONDS,
+    scan_limit: int = 50,
+    max_runtime_ms: int = 25,
+    min_interval_s: int = _PURGE_MIN_INTERVAL_S,
+) -> int:
     global _last_purge_ts
     now = _now()
     if now - _last_purge_ts < min_interval_s:
@@ -87,12 +95,14 @@ def purge_cache(ttl_seconds: int = EVID_TTL_SECONDS,
         entries = list(EVIDENCE_DIR.rglob("*.evidence.json"))
     except FileNotFoundError:
         return 0
+
     # oldest first (by mtime)
     def mtime(p: Path) -> float:
         try:
             return p.stat().st_mtime
         except FileNotFoundError:
             return 0.0
+
     entries.sort(key=mtime)
 
     for p in entries:
@@ -106,21 +116,28 @@ def purge_cache(ttl_seconds: int = EVID_TTL_SECONDS,
                 pass
     return removed
 
+
 # --------------- Helpers: hashing / signatures ---------------
-import hashlib # pyright: ignore
+import hashlib  # pyright: ignore
+
 
 def _safe_component(s: str, maxlen: int = 60) -> str:
     # Keep only filename-safe chars; trim length
     s = re.sub(r"[^A-Za-z0-9._\-]+", "_", s or "")
     return s[:maxlen]
 
+
 def _normalize_ws(s: str) -> str:
     return re.sub(r"\s+", " ", s or "").strip()
+
 
 def _sha256_text(s: str) -> str:
     return hashlib.sha256(s.encode("utf-8")).hexdigest()
 
-def _cfg_signature(model: str, temperature: float, top_p: float, seed: Optional[int]) -> str:
+
+def _cfg_signature(
+    model: str, temperature: float, top_p: float, seed: Optional[int]
+) -> str:
     payload = {
         "model": model,
         "temperature": float(temperature),
@@ -132,6 +149,7 @@ def _cfg_signature(model: str, temperature: float, top_p: float, seed: Optional[
     }
     return _sha256_text(json.dumps(payload, sort_keys=True, separators=(",", ":")))
 
+
 def _schema_signature_from_schema(schema: Dict[str, Any]) -> str:
     # Only the deterministic parts: theme names and requirement lists
     themes = schema.get("themes") or []
@@ -140,13 +158,19 @@ def _schema_signature_from_schema(schema: Dict[str, Any]) -> str:
         name = (t.get("name") or "").strip()
         reqs = list(t.get("requirements") or [])
         norm.append({"name": name, "requirements": reqs})
-    return _sha256_text(json.dumps(norm, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
+    return _sha256_text(
+        json.dumps(norm, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    )
 
-def _artifact_manifest(candidate_id: str,
-                       resume_claims_path: Optional[Path],
-                       transcript_path: Optional[Path],
-                       claims_inline: Optional[List[Dict[str, Any]]]) -> Dict[str, Any]:
+
+def _artifact_manifest(
+    candidate_id: str,
+    resume_claims_path: Optional[Path],
+    transcript_path: Optional[Path],
+    claims_inline: Optional[List[Dict[str, Any]]],
+) -> Dict[str, Any]:
     man: Dict[str, Any] = {"candidate_id": candidate_id}
+
     def file_entry(p: Optional[Path]) -> Optional[Dict[str, Any]]:
         if not p or not p.exists():
             return None
@@ -157,6 +181,7 @@ def _artifact_manifest(candidate_id: str,
         h = hashlib.sha1(data).hexdigest()
         st = p.stat()
         return {"path": str(p), "size": st.st_size, "mtime": int(st.st_mtime), "sha1": h}
+
     man["resume_claims"] = file_entry(resume_claims_path)
     man["transcript_txt"] = file_entry(transcript_path)
     if claims_inline is not None:
@@ -167,15 +192,21 @@ def _artifact_manifest(candidate_id: str,
         man["claims_inline_sha1"] = hashlib.sha1(blob.encode("utf-8")).hexdigest()
     return man
 
-def _artifact_signature(manifest: Dict[str, Any]) -> str:
-    return _sha256_text(json.dumps(manifest, sort_keys=True, ensure_ascii=False, separators=(",", ":")))
 
-def _evidence_cache_path(jd_sig: str, art_sig: str, model: str, cfg_sig: str, prompt_ver: str) -> Path:
+def _artifact_signature(manifest: Dict[str, Any]) -> str:
+    return _sha256_text(
+        json.dumps(manifest, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+    )
+
+
+def _evidence_cache_path(
+    jd_sig: str, art_sig: str, model: str, cfg_sig: str, prompt_ver: str
+) -> Path:
     # Shard into subdirs to avoid single-filename >255 bytes
-    jd_dir   = EVIDENCE_DIR / f"jd={jd_sig}"
-    cfg_dir  = jd_dir / f"cfg={cfg_sig}"
-    mod_dir  = cfg_dir / f"model={_safe_component(model)}"
-    pv_dir   = mod_dir / f"pv={_safe_component(prompt_ver)}"
+    jd_dir = EVIDENCE_DIR / f"jd={jd_sig}"
+    cfg_dir = jd_dir / f"cfg={cfg_sig}"
+    mod_dir = cfg_dir / f"model={_safe_component(model)}"
+    pv_dir = mod_dir / f"pv={_safe_component(prompt_ver)}"
     return pv_dir / f"art={art_sig}.evidence.json"
 
 
@@ -197,14 +228,17 @@ def _lazy_load_json(path: Path, ttl_seconds: int) -> Optional[Dict[str, Any]]:
             pass
         return None
 
+
 # ---------------- Artifact discovery (mirrors your existing) ----------------
 ALLOWED_CAND = re.compile(r"^[a-z0-9_\-]+$", re.IGNORECASE)
+
 
 def _safe_cand(cand: str) -> str:
     cand = (cand or "").strip().lower().replace(" ", "_")
     if not ALLOWED_CAND.fullmatch(cand):
         raise HTTPException(400, "Invalid candidate_id.")
     return cand
+
 
 def _latest_claims_json(cand: str) -> Optional[Path]:
     base = RESUME_DIR / cand
@@ -219,6 +253,7 @@ def _latest_claims_json(cand: str) -> Optional[Path]:
                 best, best_mtime = p, m
     return best
 
+
 def _latest_transcript_txt(cand: str) -> Optional[Path]:
     candidates: List[Path] = []
     for base in (AUDIO_DIR / cand, VIDEO_DIR / cand):
@@ -230,11 +265,13 @@ def _latest_transcript_txt(cand: str) -> Optional[Path]:
         return None
     return max(candidates, key=lambda p: p.stat().st_mtime)
 
+
 def _read_text(fp: Path) -> str:
     try:
         return fp.read_text(encoding="utf-8", errors="ignore")
     except Exception as e:
         raise HTTPException(500, f"Failed to read {fp.name}: {e}")
+
 
 def _load_resume_claims(fp: Path) -> List[Dict[str, Any]]:
     try:
@@ -246,7 +283,9 @@ def _load_resume_claims(fp: Path) -> List[Dict[str, Any]]:
         text = (it.get("text") or "").strip()
         if not text:
             continue
-        source_ref = it.get("source_ref") if isinstance(it.get("source_ref"), dict) else {}
+        source_ref = (
+            it.get("source_ref") if isinstance(it.get("source_ref"), dict) else {}
+        )
         kind = (source_ref.get("kind") or "resume").strip() or "resume"
         line = it.get("line")
         if line is None:
@@ -254,14 +293,17 @@ def _load_resume_claims(fp: Path) -> List[Dict[str, Any]]:
         sr_payload: Dict[str, Any] = {"kind": kind}
         if line is not None:
             sr_payload["line"] = line
-        out.append({
-            "id": f"r{i:04d}",
-            "text": text,
-            "source": kind,
-            "line": line,
-            "source_ref": sr_payload,
-        })
+        out.append(
+            {
+                "id": f"r{i:04d}",
+                "text": text,
+                "source": kind,
+                "line": line,
+                "source_ref": sr_payload,
+            }
+        )
     return out
+
 
 def _chunk_text(text: str, max_len: int = 280, min_len: int = 60) -> List[str]:
     text = re.sub(r"\s+", " ", text or "").strip()
@@ -278,7 +320,7 @@ def _chunk_text(text: str, max_len: int = 280, min_len: int = 60) -> List[str]:
             cut = text.rfind(", ", 0, max_len)
         if cut == -1:
             cut = max_len
-        frag, text = text[:cut+1].strip(), text[cut+1:].strip()
+        frag, text = text[: cut + 1].strip(), text[cut + 1 :].strip()
         if len(frag) >= min_len:
             chunks.append(frag)
     # dedupe consecutive
@@ -288,20 +330,24 @@ def _chunk_text(text: str, max_len: int = 280, min_len: int = 60) -> List[str]:
             dedup.append(s)
     return dedup[:200]
 
+
 def _claims_from_transcript_file(fp: Path) -> List[Dict[str, Any]]:
     txt = _read_text(fp)
     fragments = _chunk_text(txt, max_len=240, min_len=60)
     out: List[Dict[str, Any]] = []
     for i, s in enumerate(fragments, 1):
         sr_payload = {"kind": "transcript", "line": i}
-        out.append({
-            "id": f"t{i:04d}",
-            "text": s,
-            "source": "transcript",
-            "line": i,
-            "source_ref": sr_payload,
-        })
+        out.append(
+            {
+                "id": f"t{i:04d}",
+                "text": s,
+                "source": "transcript",
+                "line": i,
+                "source_ref": sr_payload,
+            }
+        )
     return out
+
 
 def _resolve_static_web_path(web_path: str) -> Optional[Path]:
     """
@@ -319,6 +365,7 @@ def _resolve_static_web_path(web_path: str) -> Optional[Path]:
     except Exception:
         return None
     return p if p.exists() else None
+
 
 # ---------------- LLM prompt (unchanged) ----------------
 SYSTEM_PROMPT = (
@@ -349,11 +396,17 @@ SYSTEM_PROMPT = (
     "}"
 )
 
-def _build_llm_payload(jd_schema: Dict[str, Any], llm_claims: List[Dict[str, Any]], theme_names: List[str]) -> str:
+
+def _build_llm_payload(
+    jd_schema: Dict[str, Any], llm_claims: List[Dict[str, Any]], theme_names: List[str]
+) -> str:
     payload = {
         "schema": {
             "themes": [
-                {"name": (t.get("name") or "").strip(), "requirements": list(t.get("requirements") or [])}
+                {
+                    "name": (t.get("name") or "").strip(),
+                    "requirements": list(t.get("requirements") or []),
+                }
                 for t in (jd_schema.get("themes") or [])
             ]
         },
@@ -369,7 +422,10 @@ def _build_llm_payload(jd_schema: Dict[str, Any], llm_claims: List[Dict[str, Any
     }
     return json.dumps(payload, ensure_ascii=False)
 
+
 _CID_RE = re.compile(r"^\s*([rt])\s*0*(\d+)\s*$", re.I)
+
+
 def _normalize_cid(cid: Any) -> Optional[str]:
     if cid is None:
         return None
@@ -380,10 +436,13 @@ def _normalize_cid(cid: Any) -> Optional[str]:
     prefix, num = m.group(1), int(m.group(2))
     return f"{prefix}{num:04d}"
 
-def _deterministic_select(adapter_in: Dict[str, Any],
-                          jd: Dict[str, Any],
-                          id2claim: Dict[str, Dict[str, Any]],
-                          k: int = 2) -> Tuple[Dict[str, List[Dict[str, Any]]], Dict[str, float], Dict[str, int]]:
+
+def _deterministic_select(
+    adapter_in: Dict[str, Any],
+    jd: Dict[str, Any],
+    id2claim: Dict[str, Dict[str, Any]],
+    k: int = 2,
+) -> Tuple[Dict[str, List[Dict[str, Any]]], Dict[str, float], Dict[str, int]]:
     adapter: Dict[str, List[Dict[str, Any]]] = {}
     total_reqs = 0
     hit_reqs = 0
@@ -405,11 +464,17 @@ def _deterministic_select(adapter_in: Dict[str, Any],
             for e in row.get("evidence", []):
                 raw_cid = e.get("claim_id")
                 cid = _normalize_cid(raw_cid)
-                c = id2claim.get(cid or "") or id2claim.get(str(raw_cid) if raw_cid is not None else "")
+                c = id2claim.get(cid or "") or id2claim.get(
+                    str(raw_cid) if raw_cid is not None else ""
+                )
                 if not c:
                     continue
                 text = c.get("text") or ""
-                hits = [h for h in (e.get("hit_terms") or []) if isinstance(h, str) and h.strip()]
+                hits = [
+                    h
+                    for h in (e.get("hit_terms") or [])
+                    if isinstance(h, str) and h.strip()
+                ]
                 # accept only if all hit_terms appear in claim text (case-insensitive)
                 ok = True
                 uniq = set()
@@ -430,7 +495,9 @@ def _deterministic_select(adapter_in: Dict[str, Any],
 
                 # force a string id for sorting
                 cid_str = str(c.get("id") or "")
-                raw_sr = c.get("source_ref") if isinstance(c.get("source_ref"), dict) else {}
+                raw_sr = (
+                    c.get("source_ref") if isinstance(c.get("source_ref"), dict) else {}
+                )
                 source_ref: Dict[str, Any] = {}
                 if isinstance(raw_sr, dict):
                     kind_val = raw_sr.get("kind")
@@ -444,27 +511,34 @@ def _deterministic_select(adapter_in: Dict[str, Any],
                 if line_val is not None and "line" not in source_ref:
                     source_ref["line"] = line_val
 
-                scored.append((
-                    -len(uniq),
-                    len(text),
-                    cid_str,
-                    {
-                        "claim_id": c.get("id"),
-                        "hit_terms": hits,
-                        "snippet": text,
-                        "source": kind,
-                        "source_ref": source_ref,
-                    },
-                ))
-
+                scored.append(
+                    (
+                        -len(uniq),
+                        len(text),
+                        cid_str,
+                        {
+                            "claim_id": c.get("id"),
+                            "hit_terms": hits,
+                            "snippet": text,
+                            "source": kind,
+                            "source_ref": source_ref,
+                        },
+                    )
+                )
 
             # stable deterministic selection
             scored.sort()
             selected = [item[3] for item in scored[:k]]
 
-            oq = [q for q in (row.get("open_questions") or []) if isinstance(q, str) and q.strip()][:2]
+            oq = [
+                q
+                for q in (row.get("open_questions") or [])
+                if isinstance(q, str) and q.strip()
+            ][:2]
 
-            out_rows.append({"requirement": requirement, "evidence": selected, "open_questions": oq})
+            out_rows.append(
+                {"requirement": requirement, "evidence": selected, "open_questions": oq}
+            )
 
         total_reqs += len(out_rows)
         theme_hits = sum(1 for r in out_rows if (r.get("evidence") or []))
@@ -476,6 +550,7 @@ def _deterministic_select(adapter_in: Dict[str, Any],
     counts = {"requirements": total_reqs, "hit": hit_reqs}
     return adapter, by_theme, counts
 
+
 # ---------------- Request model ----------------
 class EvidenceIn(BaseModel):
     model_config = ConfigDict(populate_by_name=True, extra="ignore")
@@ -483,6 +558,7 @@ class EvidenceIn(BaseModel):
     jd_schema: Dict[str, Any] = Field(default_factory=dict, alias="schema")
     claims: Optional[List[Dict[str, Any]]] = None
     transcript_path: Optional[str] = None
+
 
 # ---------------- Core route (Live-only; DRY removed) ----------------
 @router.post("/build")
@@ -523,7 +599,11 @@ def build_evidence(payload: EvidenceIn):
         inline_claims = None
 
     # Merge claims (transcript first to help diversity tie-break)
-    claims_llm = inline_claims if inline_claims is not None else (transcript_claims + resume_claims)
+    claims_llm = (
+        inline_claims
+        if inline_claims is not None
+        else (transcript_claims + resume_claims)
+    )
     id2claim: Dict[str, Dict[str, Any]] = {c["id"]: c for c in claims_llm}
     theme_names = [(t.get("name") or "").strip() or "Theme" for t in themes]
 
@@ -535,7 +615,9 @@ def build_evidence(payload: EvidenceIn):
     man = _artifact_manifest(cand, resume_claims_fp, transcript_fp, inline_claims)
     art_sig = _artifact_signature(man)
     cfg_sig = _cfg_signature(MODEL_LIVE, temperature=0.0, top_p=1.0, seed=LLM_SEED)
-    cache_path = _evidence_cache_path(jd_sig, art_sig, MODEL_LIVE, cfg_sig, EVIDENCE_PROMPT_V)
+    cache_path = _evidence_cache_path(
+        jd_sig, art_sig, MODEL_LIVE, cfg_sig, EVIDENCE_PROMPT_V
+    )
 
     # Case 0: try cache
     cached = _lazy_load_json(cache_path, EVID_TTL_SECONDS)
@@ -547,14 +629,17 @@ def build_evidence(payload: EvidenceIn):
     user_payload = _build_llm_payload(jd, claims_llm, theme_names)
     system_hint = (
         SYSTEM_PROMPT
-        + "\n\nUse these exact theme keys: " + json.dumps(theme_names, ensure_ascii=False)
+        + "\n\nUse these exact theme keys: "
+        + json.dumps(theme_names, ensure_ascii=False)
         + "\nSources present summary: "
         + json.dumps(
             {
                 "resume": sum(1 for c in claims_llm if c.get("source") == "resume"),
-                "transcript": sum(1 for c in claims_llm if c.get("source") == "transcript"),
+                "transcript": sum(
+                    1 for c in claims_llm if c.get("source") == "transcript"
+                ),
             },
-            ensure_ascii=False
+            ensure_ascii=False,
         )
     )
 
@@ -566,15 +651,19 @@ def build_evidence(payload: EvidenceIn):
         n=1,
         messages=[
             {"role": "system", "content": system_hint},
-            {"role": "user", "content":
-                'Below is the payload. Use it as the only source of truth. '
+            {
+                "role": "user",
+                "content": 'Below is the payload. Use it as the only source of truth. '
                 'Return only the JSON specified in the System Prompt’s "Output JSON schema".\n\n'
-                + user_payload
+                + user_payload,
             },
         ],
     )
     if LLM_DEBUG:
-        print("[LLM EVIDENCE] system_fingerprint:", getattr(resp, "system_fingerprint", None))
+        print(
+            "[LLM EVIDENCE] system_fingerprint:",
+            getattr(resp, "system_fingerprint", None),
+        )
 
     content = (resp.choices[0].message.content or "").strip()
     try:
@@ -586,7 +675,9 @@ def build_evidence(payload: EvidenceIn):
         adapter_in = json.loads(m.group(0))
 
     # ---------------- Deterministic post-processing ----------------
-    adapter, by_theme, counts = _deterministic_select(adapter_in.get("adapter") or {}, jd, id2claim)
+    adapter, by_theme, counts = _deterministic_select(
+        adapter_in.get("adapter") or {}, jd, id2claim
+    )
     overall = round((counts["hit"] / max(1, counts["requirements"])) * 100.0, 1)
     coverage = {"by_theme": by_theme, "overall": overall}
 

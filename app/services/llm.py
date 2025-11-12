@@ -14,6 +14,7 @@ from pydantic import BaseModel
 # - No prompt edits in evidence.py (this file is safe to change)
 # ============================================================================
 
+
 # ------------------------ env helpers ------------------------
 def truthy(name: str, default: str = "1") -> bool:
     v = os.getenv(name, default)
@@ -21,6 +22,7 @@ def truthy(name: str, default: str = "1") -> bool:
         return False
     v = v.strip().strip('"').strip("'").lower()
     return v in {"1", "true", "yes", "on", "y"}
+
 
 # Single model knob (live only)
 MODEL_LIVE = os.getenv("LLM_MODEL_LIVE", "gpt-4o-mini")
@@ -46,17 +48,21 @@ _SCHEMAS_DIR = _CACHE_ROOT / "schemas"
 _PURGE_MIN_INTERVAL_S = 600  # 10 minutes
 _last_purge_ts = 0.0
 
+
 def ensure_cache_dirs() -> None:
     _SCHEMAS_DIR.mkdir(parents=True, exist_ok=True)
 
+
 def _now() -> float:
     return time.time()
+
 
 def _atomic_write_json(path: Path, obj: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)  # NEW
     tmp = path.with_suffix(path.suffix + f".tmp-{os.getpid()}")
     tmp.write_text(json.dumps(obj, ensure_ascii=False, indent=2))
     os.replace(tmp, path)
+
 
 def _is_expired(path: Path, ttl_seconds: int, now: float | None = None) -> bool:
     if not path.exists():
@@ -68,6 +74,7 @@ def _is_expired(path: Path, ttl_seconds: int, now: float | None = None) -> bool:
     except FileNotFoundError:
         return True
     return age > ttl_seconds
+
 
 def _lazy_load_schema(path: Path, ttl_seconds: int) -> dict | None:
     """Return cached schema dict or None. Deletes expired files on sight."""
@@ -90,10 +97,13 @@ def _lazy_load_schema(path: Path, ttl_seconds: int) -> dict | None:
             pass
         return None
 
-def purge_cache(ttl_seconds: int = SCHEMA_TTL_SECONDS,
-                scan_limit: int = 50,
-                max_runtime_ms: int = 25,
-                min_interval_s: int = _PURGE_MIN_INTERVAL_S) -> int:
+
+def purge_cache(
+    ttl_seconds: int = SCHEMA_TTL_SECONDS,
+    scan_limit: int = 50,
+    max_runtime_ms: int = 25,
+    min_interval_s: int = _PURGE_MIN_INTERVAL_S,
+) -> int:
     """Small, bounded sweep of expired schema cache files; returns files removed."""
     global _last_purge_ts
     now = _now()
@@ -122,11 +132,14 @@ def purge_cache(ttl_seconds: int = SCHEMA_TTL_SECONDS,
                 pass
     return removed
 
+
 def _normalize_ws(s: str) -> str:
     return re.sub(r"\s+", " ", s or "").strip()
 
+
 def _sha256_text(s: str) -> str:
     return hashlib.sha256(s.encode("utf-8")).hexdigest()
+
 
 def _cfg_signature(model: str, temperature: float, top_p: float, seed: int | None) -> str:
     payload = {
@@ -140,9 +153,11 @@ def _cfg_signature(model: str, temperature: float, top_p: float, seed: int | Non
     }
     return _sha256_text(json.dumps(payload, sort_keys=True, separators=(",", ":")))
 
+
 def _schema_cache_path(jd_hash: str, model: str, cfg_sig: str, prompt_ver: str) -> Path:
     fname = f"jd={jd_hash}__model={model}__cfg={cfg_sig}__pv={prompt_ver}.schema.json"
     return _SCHEMAS_DIR / fname
+
 
 # ------------------------ schema guard ------------------------
 class SixtySecondJD(BaseModel):
@@ -150,8 +165,10 @@ class SixtySecondJD(BaseModel):
     company: str | None = None
     themes: list[Dict]  # [{name, requirements:[], success_indicators:[]}]
 
+
 # ------------------------ normalization ------------------------
 _PLACEHOLDERS = {"not specified", "unspecified", "n/a", "na", "none", "null", ""}
+
 
 def _normalize_company(val):
     if val is None:
@@ -160,6 +177,7 @@ def _normalize_company(val):
     if s.lower() in _PLACEHOLDERS:
         return None
     return s
+
 
 # ------------------------ domain-agnostic system prompt ------------------------
 # NOTE: This is your existing compiler prompt as-is.
@@ -184,6 +202,7 @@ Rules:
 - company: if absent in the JD, set to null. Do NOT output placeholders like "Not Specified", "N/A", or "None".
 - Output RAW JSON only (no markdown, no code fences, no commentary).
 """
+
 
 # ------------------------ compiler (Live-only) ------------------------
 def compile_60s_jd(raw_text: str, *, dry_mode: bool | None = None) -> dict:
@@ -214,6 +233,7 @@ def compile_60s_jd(raw_text: str, *, dry_mode: bool | None = None) -> dict:
 
     # ---- live call (strict) ----
     from openai import OpenAI
+
     client = OpenAI()
 
     system = _SYSTEM_PROMPT
@@ -227,15 +247,17 @@ def compile_60s_jd(raw_text: str, *, dry_mode: bool | None = None) -> dict:
         n=1,
         messages=[
             {"role": "system", "content": system},
-            {"role": "user",   "content": user},
+            {"role": "user", "content": user},
         ],
     )
 
     if LLM_DEBUG:
-        print("[LLM COMPILE] system_fingerprint:", getattr(resp, "system_fingerprint", None))
-    
+        print(
+            "[LLM COMPILE] system_fingerprint:", getattr(resp, "system_fingerprint", None)
+        )
+
     # coerce to string
-    content = (resp.choices[0].message.content or "")
+    content = resp.choices[0].message.content or ""
 
     # Lenient JSON extraction
     try:
@@ -257,15 +279,19 @@ def compile_60s_jd(raw_text: str, *, dry_mode: bool | None = None) -> dict:
         reqs = [r for r in (t.get("requirements") or []) if str(r).strip()]
         succ = [s for s in (t.get("success_indicators") or []) if str(s).strip()]
         if name and (reqs or succ):
-            cleaned_themes.append({"name": name, "requirements": reqs, "success_indicators": succ})
+            cleaned_themes.append(
+                {"name": name, "requirements": reqs, "success_indicators": succ}
+            )
     data["themes"] = cleaned_themes
 
     # Final shape guard
-    SixtySecondJD(**{
-        "role_title": data["role_title"],
-        "company": data.get("company"),
-        "themes": data["themes"],
-    })
+    SixtySecondJD(
+        **{
+            "role_title": data["role_title"],
+            "company": data.get("company"),
+            "themes": data["themes"],
+        }
+    )
 
     # Persist to cache (atomic)
     payload = {

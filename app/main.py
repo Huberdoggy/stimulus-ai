@@ -2,6 +2,10 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
+from dotenv import load_dotenv
+
+# Rehydrate environment variables from .env for local parity with Replit.
+load_dotenv()
 
 from .routes.jd import router as jd_router
 from .routes.ui import router as ui_router
@@ -22,16 +26,19 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
 
 @app.get("/", include_in_schema=False)
 def home():
     return RedirectResponse(url="/ui/adapter", status_code=307)
 
+
 # Routers (prefixes defined here only, for consistency)
-app.include_router(jd_router,        prefix="/jd",        tags=["jd"])
-app.include_router(ui_router,        prefix="/ui",        tags=["ui"])
+app.include_router(jd_router, prefix="/jd", tags=["jd"])
+app.include_router(ui_router, prefix="/ui", tags=["ui"])
 app.include_router(artifacts_router, prefix="/artifacts", tags=["artifacts"])
-app.include_router(evidence_router,  prefix="/evidence",  tags=["evidence"])
+app.include_router(evidence_router, prefix="/evidence", tags=["evidence"])

@@ -4,8 +4,10 @@ from ..services.llm import compile_60s_jd
 
 router = APIRouter()
 
+
 class JDIn(BaseModel):
     text: str
+
 
 @router.post("/60s")
 def sixty_seconds_jd(payload: JDIn):

@@ -17,14 +17,39 @@ except Exception:
     DocxDocument = None
 
 _STOP = {
-    "the","and","of","to","a","in","for","on","as","with","by","or","an","be",
-    "at","from","is","are","was","were","it","that","this","these","those",
+    "the",
+    "and",
+    "of",
+    "to",
+    "a",
+    "in",
+    "for",
+    "on",
+    "as",
+    "with",
+    "by",
+    "or",
+    "an",
+    "be",
+    "at",
+    "from",
+    "is",
+    "are",
+    "was",
+    "were",
+    "it",
+    "that",
+    "this",
+    "these",
+    "those",
 }
+
 
 def _ext(name: Optional[str]) -> str:
     if not name:
         return ""
     return os.path.splitext(name)[1].lower()
+
 
 def extract_text_from_bytes(filename: Optional[str], data: bytes) -> str:
     ext = _ext(filename)
@@ -40,6 +65,7 @@ def extract_text_from_bytes(filename: Optional[str], data: bytes) -> str:
     # fallback: assume utf-8 text-like content
     return data.decode("utf-8", errors="ignore")
 
+
 def _mk_claim(text: str, line_no: int) -> Dict:
     cid = hashlib.sha1(f"{line_no}:{text}".encode("utf-8")).hexdigest()[:12]
     return {
@@ -49,8 +75,10 @@ def _mk_claim(text: str, line_no: int) -> Dict:
         "tags": [],
     }
 
+
 def _dedupe_claims(claims: List[Dict]) -> List[Dict]:
-    seen = set(); out: List[Dict] = []
+    seen = set()
+    out: List[Dict] = []
     for c in claims:
         key = c["text"].lower().strip()
         if key in seen:
@@ -58,6 +86,7 @@ def _dedupe_claims(claims: List[Dict]) -> List[Dict]:
         seen.add(key)
         out.append(c)
     return out
+
 
 def normalize_resume_text(text: str) -> List[Dict]:
     """
@@ -84,4 +113,3 @@ def normalize_resume_text(text: str) -> List[Dict]:
         else:
             claims.append(_mk_claim(ln, line_no))
     return _dedupe_claims(claims)
-

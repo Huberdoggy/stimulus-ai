@@ -6,7 +6,9 @@ from typing import Optional
 from openai import OpenAI
 
 
-def transcribe_audio_bytes(filename: str, data: bytes, *, dry_mode: Optional[bool] = None) -> str:
+def transcribe_audio_bytes(
+    filename: str, data: bytes, *, dry_mode: Optional[bool] = None
+) -> str:
     """
     Transcribe audio bytes to text (Live-only; DRY removed in P1.5).
 
