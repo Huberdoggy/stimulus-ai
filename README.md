@@ -5,7 +5,7 @@ Stimulus AI turns résumés, transcripts, and job descriptions into a shared “
 - **Evidence-first UX:** `/ui/adapter` renders a deterministic coverage map with token-level highlights, badges for codecs/durations, and live health checks.
 - **Media ingest pipeline:** ffmpeg handles video/audio probing, WAV extraction, and upload caches under `app/static/uploads/`.
 - **LLM orchestration:** Deterministic JD/evidence compilers run with caching in `app/static/cache/` and respect OpenAI settings pulled from `.env`.
-- **Single-node friendly:** Everything (uploads, caches, templates, static assets) lives inside `app/`, so relocating off Replit only requires Python + ffmpeg + your API key.
+- **Single-node friendly:** Everything (uploads, caches, templates, static assets) lives inside `app/`; only requires Python + ffmpeg + your API key.
 
 ---
 
@@ -25,7 +25,7 @@ https://github.com/user-attachments/assets/05408a41-cbde-4c77-8563-ef4c75ce16a7
 ### Quickstart
 1. **Clone & enter the repo**
    ```bash
-   git clone <repo-url> stimulus-ai
+   git clone https://github.com/Huberdoggy/stimulus-ai.git stimulus-ai
    cd stimulus-ai
    ```
 2. **Create/activate the virtualenv**
